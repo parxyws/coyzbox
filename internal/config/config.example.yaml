@@ -1,0 +1,56 @@
+server:
+  host: "0.0.0.0"
+  port: 8080
+  base_url: "https://example.com"
+  read_timeout: 30s
+  write_timeout: 30s
+  ssl: false
+  mode: "debug" # Required [debug, release, test]
+  jwt_secret_key: "your_super_secret_jwt_key"
+
+write_db:
+  user: "postgres"
+  password: "password"
+  host: "localhost"
+  port: 5432
+  name_db: "cozybox"
+
+read_db:
+  user: "postgres"
+  password: "password"
+  host: "localhost"
+  port: 5432
+  name_db: "cozybox"
+
+aws:
+  endpoint: "s3.amazonaws.com"
+  mini_endpoint: "localhost:9000"
+  minio_access_key: "minioadmin"
+  minio_secret_key: "minioadmin"
+  minio_license: ""
+  use_ssl: false
+
+logger:
+  level: trace # Required [trace, debug, info, warn, error, fatal, panic]
+  caller: true # Required [true, false]
+  encoding: text # Optional [json, text], default json
+  development: true
+
+redis:
+  host: "localhost"
+  port: 6379
+  password: ""
+  auth_db: 0
+  cache_db: 1
+  limiter_db: 2
+
+mail:
+  host: "smtp.example.com"
+  port: 587
+  user: "user@example.com"
+  password: "your_email_password"
+
+admin:
+  user: "admin"
+  email: "admin@cozybox.test"
+  password: "adminpassword"
