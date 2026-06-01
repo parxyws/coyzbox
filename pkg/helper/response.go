@@ -3,7 +3,7 @@ package helper
 import (
 	"github.com/gin-gonic/gin"
 	"github.com/parxyws/cozybox/internal/dto"
-	"github.com/parxyws/cozybox/internal/pkg/validator"
+	"github.com/parxyws/cozybox/pkg/validator"
 )
 
 func Success(ctx *gin.Context, status int, message string, data any) {

@@ -5,9 +5,9 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/parxyws/cozybox/internal/dto"
-	"github.com/parxyws/cozybox/internal/pkg/helper"
-	"github.com/parxyws/cozybox/internal/pkg/validator"
 	"github.com/parxyws/cozybox/internal/services"
+	helper2 "github.com/parxyws/cozybox/pkg/helper"
+	"github.com/parxyws/cozybox/pkg/validator"
 )
 
 type AuthHandler struct {
@@ -30,27 +30,27 @@ func NewAuthHandler(authService *services.AuthService) *AuthHandler {
 // @Failure      500 {object} dto.SwaggerDocResponse "Server error"
 // @Router       /auth/register [post]
 func (a *AuthHandler) Register(c *gin.Context) {
-	ctx, cancel := helper.GetContext(c)
+	ctx, cancel := helper2.GetContext(c)
 	defer cancel()
 
 	var req dto.RegisterUserRequest
 	if err := c.ShouldBindBodyWithJSON(&req); err != nil {
-		helper.Error(c, http.StatusBadRequest, "Invalid request body", err)
+		helper2.Error(c, http.StatusBadRequest, "Invalid request body", err)
 		return
 	}
 
 	if err := validator.Validate.StructCtx(ctx, req); err != nil {
-		helper.Error(c, http.StatusBadRequest, "Invalid request body", err)
+		helper2.Error(c, http.StatusBadRequest, "Invalid request body", err)
 		return
 	}
 
 	result, err := a.authService.Register(ctx, &req)
 	if err != nil {
-		helper.Error(c, http.StatusInternalServerError, "Failed to register user", err)
+		helper2.Error(c, http.StatusInternalServerError, "Failed to register user", err)
 		return
 	}
 
-	helper.Success(c, http.StatusCreated, "User registered successfully", result)
+	helper2.Success(c, http.StatusCreated, "User registered successfully", result)
 }
 
 // VerifyEmail godoc
@@ -65,27 +65,27 @@ func (a *AuthHandler) Register(c *gin.Context) {
 // @Failure      500 {object} dto.SwaggerDocResponse "Server error"
 // @Router       /auth/verify-email [post]
 func (a *AuthHandler) VerifyEmail(c *gin.Context) {
-	ctx, cancel := helper.GetContext(c)
+	ctx, cancel := helper2.GetContext(c)
 	defer cancel()
 
 	var req dto.VerifyEmailRequest
 	if err := c.ShouldBindBodyWithJSON(&req); err != nil {
-		helper.Error(c, http.StatusBadRequest, "Invalid request body", err)
+		helper2.Error(c, http.StatusBadRequest, "Invalid request body", err)
 		return
 	}
 
 	if err := validator.Validate.StructCtx(ctx, req); err != nil {
-		helper.Error(c, http.StatusBadRequest, "Invalid request body", err)
+		helper2.Error(c, http.StatusBadRequest, "Invalid request body", err)
 		return
 	}
 
 	result, err := a.authService.VerifyEmail(ctx, &req)
 	if err != nil {
-		helper.Error(c, http.StatusInternalServerError, "Failed to verify email", err)
+		helper2.Error(c, http.StatusInternalServerError, "Failed to verify email", err)
 		return
 	}
 
-	helper.Success(c, http.StatusOK, "User email verified successfully", result)
+	helper2.Success(c, http.StatusOK, "User email verified successfully", result)
 }
 
 // Login godoc
@@ -100,27 +100,27 @@ func (a *AuthHandler) VerifyEmail(c *gin.Context) {
 // @Failure      401 {object} dto.SwaggerDocResponse "Invalid credentials"
 // @Router       /auth/login [post]
 func (a *AuthHandler) Login(c *gin.Context) {
-	ctx, cancel := helper.GetContext(c)
+	ctx, cancel := helper2.GetContext(c)
 	defer cancel()
 
 	var req dto.LoginRequest
 	if err := c.ShouldBindBodyWithJSON(&req); err != nil {
-		helper.Error(c, http.StatusBadRequest, "Invalid request body", err)
+		helper2.Error(c, http.StatusBadRequest, "Invalid request body", err)
 		return
 	}
 
 	if err := validator.Validate.StructCtx(ctx, req); err != nil {
-		helper.Error(c, http.StatusBadRequest, "Invalid request body", err)
+		helper2.Error(c, http.StatusBadRequest, "Invalid request body", err)
 		return
 	}
 
 	result, err := a.authService.Login(ctx, &req)
 	if err != nil {
-		helper.Error(c, http.StatusUnauthorized, "Login failed", err)
+		helper2.Error(c, http.StatusUnauthorized, "Login failed", err)
 		return
 	}
 
-	helper.Success(c, http.StatusOK, "Login successful", result)
+	helper2.Success(c, http.StatusOK, "Login successful", result)
 }
 
 // RefreshToken godoc
@@ -135,27 +135,27 @@ func (a *AuthHandler) Login(c *gin.Context) {
 // @Failure      401 {object} dto.SwaggerDocResponse "Invalid refresh token"
 // @Router       /auth/refresh-token [post]
 func (a *AuthHandler) RefreshToken(c *gin.Context) {
-	ctx, cancel := helper.GetContext(c)
+	ctx, cancel := helper2.GetContext(c)
 	defer cancel()
 
 	var req dto.RefreshTokenRequest
 	if err := c.ShouldBindBodyWithJSON(&req); err != nil {
-		helper.Error(c, http.StatusBadRequest, "Invalid request body", err)
+		helper2.Error(c, http.StatusBadRequest, "Invalid request body", err)
 		return
 	}
 
 	if err := validator.Validate.StructCtx(ctx, req); err != nil {
-		helper.Error(c, http.StatusBadRequest, "Invalid request body", err)
+		helper2.Error(c, http.StatusBadRequest, "Invalid request body", err)
 		return
 	}
 
 	result, err := a.authService.RefreshToken(ctx, &req)
 	if err != nil {
-		helper.Error(c, http.StatusUnauthorized, "Token refresh failed", err)
+		helper2.Error(c, http.StatusUnauthorized, "Token refresh failed", err)
 		return
 	}
 
-	helper.Success(c, http.StatusOK, "Token refreshed successfully", result)
+	helper2.Success(c, http.StatusOK, "Token refreshed successfully", result)
 }
 
 // Logout godoc
@@ -170,21 +170,21 @@ func (a *AuthHandler) RefreshToken(c *gin.Context) {
 // @Security     BearerAuth
 // @Router       /auth/logout [post]
 func (a *AuthHandler) Logout(c *gin.Context) {
-	ctx, cancel := helper.GetContext(c)
+	ctx, cancel := helper2.GetContext(c)
 	defer cancel()
 
 	sessionID, exists := c.Get("session_id")
 	if !exists {
-		helper.Error(c, http.StatusBadRequest, "Session not found", nil)
+		helper2.Error(c, http.StatusBadRequest, "Session not found", nil)
 		return
 	}
 
 	if err := a.authService.Logout(ctx, sessionID.(string)); err != nil {
-		helper.Error(c, http.StatusInternalServerError, "Logout failed", err)
+		helper2.Error(c, http.StatusInternalServerError, "Logout failed", err)
 		return
 	}
 
-	helper.Success(c, http.StatusOK, "Logged out successfully", nil)
+	helper2.Success(c, http.StatusOK, "Logged out successfully", nil)
 }
 
 // ForgotPassword godoc
@@ -199,26 +199,26 @@ func (a *AuthHandler) Logout(c *gin.Context) {
 // @Failure      401 {object} dto.SwaggerDocResponse "User not found"
 // @Router       /auth/forgot-password [post]
 func (a *AuthHandler) ForgotPassword(c *gin.Context) {
-	ctx, cancel := helper.GetContext(c)
+	ctx, cancel := helper2.GetContext(c)
 	defer cancel()
 
 	var req dto.ForgotPasswordRequest
 	if err := c.ShouldBindBodyWithJSON(&req); err != nil {
-		helper.Error(c, http.StatusBadRequest, "Invalid request body", err)
+		helper2.Error(c, http.StatusBadRequest, "Invalid request body", err)
 		return
 	}
 
 	if err := validator.Validate.StructCtx(ctx, req); err != nil {
-		helper.Error(c, http.StatusBadRequest, "Invalid request body", err)
+		helper2.Error(c, http.StatusBadRequest, "Invalid request body", err)
 		return
 	}
 
 	if err := a.authService.ForgotPassword(ctx, &req); err != nil {
-		helper.Error(c, http.StatusUnauthorized, "Forgot password failed", err)
+		helper2.Error(c, http.StatusUnauthorized, "Forgot password failed", err)
 		return
 	}
 
-	helper.Success(c, http.StatusOK, "Request Forgot password successfully", nil)
+	helper2.Success(c, http.StatusOK, "Request Forgot password successfully", nil)
 }
 
 // ResetPassword godoc
@@ -233,24 +233,24 @@ func (a *AuthHandler) ForgotPassword(c *gin.Context) {
 // @Failure      401 {object} dto.SwaggerDocResponse "Invalid OTP"
 // @Router       /auth/reset-password [post]
 func (a *AuthHandler) ResetPassword(c *gin.Context) {
-	ctx, cancel := helper.GetContext(c)
+	ctx, cancel := helper2.GetContext(c)
 	defer cancel()
 
 	var req dto.ResetPasswordRequest
 	if err := c.ShouldBindBodyWithJSON(&req); err != nil {
-		helper.Error(c, http.StatusBadRequest, "Invalid request body", err)
+		helper2.Error(c, http.StatusBadRequest, "Invalid request body", err)
 		return
 	}
 
 	if err := validator.Validate.StructCtx(ctx, req); err != nil {
-		helper.Error(c, http.StatusBadRequest, "Invalid request body", err)
+		helper2.Error(c, http.StatusBadRequest, "Invalid request body", err)
 		return
 	}
 
 	if err := a.authService.ResetPassword(ctx, &req); err != nil {
-		helper.Error(c, http.StatusUnauthorized, "Reset password failed", err)
+		helper2.Error(c, http.StatusUnauthorized, "Reset password failed", err)
 		return
 	}
 
-	helper.Success(c, http.StatusOK, "Request Reset password successfully", nil)
+	helper2.Success(c, http.StatusOK, "Request Reset password successfully", nil)
 }

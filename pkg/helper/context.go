@@ -5,13 +5,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-)
-
-type ContextKey string
-
-const (
-	RequestID ContextKey = "request_id"
-	UserID    ContextKey = "user_id"
+	"github.com/parxyws/cozybox/internal/core"
 )
 
 // DefaultTimeout provides a logical baseline timeout for operations
@@ -31,6 +25,6 @@ func GetContextWithTimeout(c *gin.Context, timeout time.Duration) (context.Conte
 		reqID = c.GetHeader("X-Request-ID")
 	}
 
-	ctx = context.WithValue(ctx, RequestID, reqID)
+	ctx = context.WithValue(ctx, core.RequestID, reqID)
 	return ctx, cancel
 }

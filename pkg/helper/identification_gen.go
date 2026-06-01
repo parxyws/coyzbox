@@ -8,12 +8,12 @@ import (
 )
 
 const (
-	ID_PREFIX_QUOTATION      = "QUO"
-	ID_PREFIX_INVOICE        = "INV"
-	ID_PREFIX_RECEIPT        = "REC"
-	ID_PREFIX_PURCHASE_ORDER = "PO"
-	ID_PREFIX_SALES_ORDER    = "SO"
-	ID_PREFIX_DEBIT_NOTE     = "DN"
+	IdPrefixQuotation     = "QUO"
+	IdPrefixInvoice       = "INV"
+	IdPrefixReceipt       = "REC"
+	IdPrefixPurchaseOrder = "PO"
+	IdPrefixSalesOrder    = "SO"
+	IdPrefixDebitNote     = "DN"
 )
 
 func getLastId() string {
@@ -27,17 +27,17 @@ func IdentificationGenerator(uniqueId string, documentType models.DocumentType) 
 
 	switch documentType {
 	case models.DocumentTypeQuotation:
-		documentTypeId = ID_PREFIX_QUOTATION
+		documentTypeId = IdPrefixQuotation
 	case models.DocumentTypeInvoice:
-		documentTypeId = ID_PREFIX_INVOICE
+		documentTypeId = IdPrefixInvoice
 	case models.DocumentTypeReceipt:
-		documentTypeId = ID_PREFIX_RECEIPT
+		documentTypeId = IdPrefixReceipt
 	case models.DocumentTypePurchaseOrder:
-		documentTypeId = ID_PREFIX_PURCHASE_ORDER
+		documentTypeId = IdPrefixPurchaseOrder
 	case models.DocumentTypeSalesOrder:
-		documentTypeId = ID_PREFIX_SALES_ORDER
+		documentTypeId = IdPrefixSalesOrder
 	case models.DocumentTypeDebitNote:
-		documentTypeId = ID_PREFIX_DEBIT_NOTE
+		documentTypeId = IdPrefixDebitNote
 	}
 
 	generatedId := fmt.Sprintf("%s-%s-%s", documentTypeId, uniqueId, lastId)

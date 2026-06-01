@@ -7,7 +7,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/parxyws/cozybox/internal/core"
-	"github.com/parxyws/cozybox/internal/pkg/helper"
+	"github.com/parxyws/cozybox/pkg/helper"
 )
 
 // AuthMiddleware validates the JWT access token from the Authorization header

@@ -1,0 +1,78 @@
+services:
+  postgres-master:
+    image: docker.io/bitnami/postgresql:latest
+    container_name: cozybox_master_db
+    ports:
+      - "5500:5432"
+    restart: always
+    environment:
+      POSTGRESQL_REPLICATION_MODE: master
+      POSTGRESQL_REPLICATION_USER: replication_user
+      POSTGRESQL_REPLICATION_PASSWORD: replication_password
+      POSTGRESQL_USERNAME: postgres
+      POSTGRESQL_PASSWORD: password
+      POSTGRESQL_DATABASE: cozybox
+      POSTGRESQL_PGAUDIT_LOG: READ,WRITE
+      POSTGRESQL_LOG_HOSTNAME: "true"
+    volumes:
+      - cozybox_postgres_master_data:/bitnami/postgresql
+    networks:
+      - cozybox_network_db
+
+  postgres-replica1:
+    image: docker.io/bitnami/postgresql:latest
+    container_name: cozybox_replica_db
+    depends_on:
+      - postgres-master
+    ports:
+      - "5501:5432"
+    restart: always
+    environment:
+      POSTGRESQL_REPLICATION_MODE: slave
+      POSTGRESQL_REPLICATION_USER: replication_user
+      POSTGRESQL_REPLICATION_PASSWORD: replication_password
+      POSTGRESQL_MASTER_HOST: postgres-master
+      POSTGRESQL_MASTER_PORT_NUMBER: 5432
+      POSTGRESQL_PASSWORD: password
+    volumes:
+      - cozybox_postgres_replica1_data:/bitnami/postgresql
+    networks:
+      - cozybox_network_db
+
+  redis:
+    image: redis:8.4.0
+    container_name: cozybox_redis
+    restart: always
+    command: redis-server --appendonly yes --requirepass cmjpqcqbc000104kzca2o86rw
+    ports:
+      - "6379:6379"
+    volumes:
+      - cozybox_redis_data:/data
+    networks:
+      - cozybox_network_db
+
+  minio:
+    image: quay.io/minio/aistor/minio
+    container_name: cozybox_minio
+    restart: unless-stopped
+    ports:
+      - "9000:9000" # S3 API Port
+      - "9090:9090" # Web Console Port
+    environment:
+      MINIO_ROOT_USER: cozyadmin
+      MINIO_ROOT_PASSWORD: strongpassword
+      MINIO_LICENSE: ${MINIO_LICENSE}
+    volumes:
+      - cozybox_minio_data:/data
+    command: server /data --console-address ":9090"
+
+networks:
+  cozybox_network_db:
+    driver: bridge
+
+volumes:
+  cozybox_minio_data:
+    driver: local
+  cozybox_postgres_master_data:
+  cozybox_postgres_replica1_data:
+  cozybox_redis_data:

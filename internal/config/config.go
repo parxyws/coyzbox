@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/parxyws/cozybox/internal/pkg/validator"
+	"github.com/parxyws/cozybox/pkg/validator"
 	"github.com/spf13/viper"
 )
 

@@ -2,7 +2,7 @@ package main
 
 import (
 	"github.com/parxyws/cozybox/internal/config"
-	"github.com/parxyws/cozybox/internal/pkg/logger"
+	"github.com/parxyws/cozybox/pkg/logger"
 	"github.com/sirupsen/logrus"
 )
 

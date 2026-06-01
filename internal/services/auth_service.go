@@ -16,9 +16,9 @@ import (
 	"github.com/parxyws/cozybox/internal/core"
 	"github.com/parxyws/cozybox/internal/dto"
 	"github.com/parxyws/cozybox/internal/models"
-	"github.com/parxyws/cozybox/internal/pkg/database/aws"
-	"github.com/parxyws/cozybox/internal/pkg/helper"
-	"github.com/parxyws/cozybox/internal/pkg/mail"
+	"github.com/parxyws/cozybox/pkg/database/aws"
+	helper2 "github.com/parxyws/cozybox/pkg/helper"
+	"github.com/parxyws/cozybox/pkg/mail"
 	"github.com/redis/go-redis/v9"
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
@@ -29,7 +29,7 @@ type AuthService struct {
 	mailer    *mail.Mailer
 	authRds   *redis.Client
 	s3service *aws.S3Service
-	jwt       helper.TokenGenerator
+	jwt       helper2.TokenGenerator
 	addr      string
 }
 
@@ -38,7 +38,7 @@ const (
 	OTP_EXPIRY = 2 * time.Minute
 )
 
-func NewUserService(db *gorm.DB, mailer *mail.Mailer, authRds *redis.Client, jwt helper.TokenGenerator, addr string, s3service *aws.S3Service) *AuthService {
+func NewUserService(db *gorm.DB, mailer *mail.Mailer, authRds *redis.Client, jwt helper2.TokenGenerator, addr string, s3service *aws.S3Service) *AuthService {
 	return &AuthService{db: db, mailer: mailer, authRds: authRds, jwt: jwt, addr: addr, s3service: s3service}
 }
 
@@ -121,7 +121,7 @@ func (u *AuthService) Register(ctx context.Context, req *dto.RegisterUserRequest
 		return nil, errors.New("failed to marshal user data")
 	}
 
-	otp, err := helper.GenerateRandomInteger(OTP_LENGTH)
+	otp, err := helper2.GenerateRandomInteger(OTP_LENGTH)
 	if err != nil {
 		return nil, errors.New("failed to generate otp")
 	}
@@ -514,7 +514,7 @@ func (u *AuthService) ForgotPassword(ctx context.Context, req *dto.ForgotPasswor
 	identifier := base64.StdEncoding.EncodeToString([]byte(req.Email))
 	referenceId := fmt.Sprintf("%s-%s", identifier, ulid.Make().String())
 
-	otp, err := helper.GenerateRandomInteger(OTP_LENGTH)
+	otp, err := helper2.GenerateRandomInteger(OTP_LENGTH)
 
 	pipe := u.authRds.Pipeline()
 	pipe.Set(ctx, fmt.Sprintf("otp-%s", referenceId), otp, OTP_EXPIRY)
