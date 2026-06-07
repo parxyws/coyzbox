@@ -1,0 +1,15 @@
+template: testify
+packages:
+  github.com/parxyws/cozybox/internal/app/auth:
+    config:
+      dir: internal/app/auth/mocks
+      filename: "mock_{{.InterfaceName | snakecase}}.go"
+    interfaces:
+      UserRepository:
+      TenantRepository:
+      TenantMemberRepository:
+      OrganizationRepository:
+      SessionStore:
+      Mailer:
+      FileStorage:
+      AuthService:

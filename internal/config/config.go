@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/parxyws/cozybox/pkg/validator"
+	"github.com/parxyws/cozybox/internal/pkg/validator"
 	"github.com/spf13/viper"
 )
 
@@ -62,6 +62,7 @@ type AwsConfig struct {
 	MinioSecretKey string `mapstructure:"minio_secret_key" validate:"required"`
 	MinioLicense   string `mapstructure:"minio_license" validate:"required"`
 	UseSSL         bool   `mapstructure:"use_ssl"`
+	BucketName     string `mapstructure:"bucket_name"`
 }
 
 type RedisConfig struct {
