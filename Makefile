@@ -1,5 +1,5 @@
 DB_USER ?= postgres
-DB_PASSWORD ?= password
+DB_PASSWORD ?= s408RZ1ej76vl9ta
 DB_HOST ?= localhost
 DB_PORT ?= 5500
 DB_NAME ?= cozybox
@@ -7,7 +7,10 @@ DB_URL ?= postgres://$(DB_USER):$(DB_PASSWORD)@$(DB_HOST):$(DB_PORT)/$(DB_NAME)?
 
 MOCKERY_VERSION ?= latest
 
-.PHONY: migrate-up migrate-down migrate-down-force swagger ui-build build mock install-tools test
+.PHONY: migrate-up migrate-down migrate-down-force swagger ui-build build mock install-tools test compose-up
+
+compose-up:
+	podman compose -f deployments/docker-compose.yaml up -d
 
 migrate-up:
 	migrate -path db/migrations -database "$(DB_URL)" up

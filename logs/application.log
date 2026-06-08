@@ -1,0 +1,3 @@
+time="2026-06-08 00:35:01" level=fatal msg="failed to connect to postgres: failed to initialize db resolver plugin: failed to connect to `user=postgres database=cozybox`:\n\t[::1]:5501 (localhost): dial error: dial tcp [::1]:5501: connectex: No connection could be made because the target machine actively refused it.\n\t127.0.0.1:5501 (localhost): failed SASL auth: FATAL: password authentication failed for user \"postgres\" (SQLSTATE 28P01)" file="main.go:30"
+time="2026-06-08 00:38:22" level=fatal msg="failed to start server: invalid key size: must be at least 32 characters" file="main.go:97"
+time="2026-06-08 00:44:24" level=fatal msg="failed to start server: invalid key size: must be at least 32 characters" file="main.go:97"

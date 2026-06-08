@@ -24,7 +24,7 @@ var fieldsLevelMap = map[string]logrus.Level{
 	"panic": logrus.PanicLevel,
 }
 
-func NewLogger(cfg *config.Config) *logrus.Logger {
+func NewLogger(cfg *config.Config) (*logrus.Logger, io.Closer) {
 	Log = logrus.New()
 
 	level, exist := fieldsLevelMap[cfg.Logger.Level]
@@ -73,5 +73,5 @@ func NewLogger(cfg *config.Config) *logrus.Logger {
 	Log.SetReportCaller(cfg.Logger.Caller)
 	Log.SetOutput(mw)
 
-	return Log
+	return Log, lumberjackLogger
 }

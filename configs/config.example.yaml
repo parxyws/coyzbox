@@ -7,6 +7,8 @@ server:
   ssl: false
   mode: "debug" # Required [debug, release, test]
   jwt_secret_key: "your_super_secret_jwt_key"
+  cert_file_path: ""
+  key_file_path: ""
 
 write_db:
   user: "postgres"
@@ -22,7 +24,7 @@ read_db:
   port: 5432
   name_db: "cozybox"
 
-aws:
+minio:
   endpoint: "s3.amazonaws.com"
   mini_endpoint: "localhost:9000"
   minio_access_key: "minioadmin"
@@ -33,7 +35,7 @@ aws:
 logger:
   level: trace # Required [trace, debug, info, warn, error, fatal, panic]
   caller: true # Required [true, false]
-  encoding: text # Optional [json, text], default json
+  encoding: text # Optional [json, text], default JSON
   development: true
 
 redis:

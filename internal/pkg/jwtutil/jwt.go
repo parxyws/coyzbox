@@ -1,4 +1,4 @@
-package helper
+package jwtutil
 
 import (
 	"crypto/rand"
@@ -26,7 +26,7 @@ type JWTMaker struct {
 	secretKey []byte
 }
 
-func NewJWTMaker(secretKey string) (domain.TokenGenerator, error) {
+func NewJWTMaker(secretKey string) (TokenGenerator, error) {
 	if len(secretKey) < 32 {
 		return nil, errors.New("invalid key size: must be at least 32 characters")
 	}

@@ -1,42 +1,16 @@
-package auth
+package middleware
 
 import (
 	"context"
 	"net/http"
 	"strings"
-	"sync"
 
 	"github.com/gin-gonic/gin"
 	"github.com/parxyws/cozybox/internal/config"
-	"github.com/parxyws/cozybox/internal/domain"
-	"github.com/sirupsen/logrus"
-	"gorm.io/gorm"
+	"github.com/parxyws/cozybox/internal/pkg/jwtutil"
 )
 
-type ManagerMiddleware struct {
-	logger          *logrus.Logger
-	cfg             *config.Config
-	db              *gorm.DB
-	mu              sync.RWMutex
-	permissionCache map[string]map[string]bool
-}
-
-func NewMiddlewareManager(cfg *ConfigMiddleware) *ManagerMiddleware {
-	return &ManagerMiddleware{
-		cfg:             cfg.Cfg,
-		logger:          cfg.Logger,
-		db:              cfg.DB,
-		permissionCache: make(map[string]map[string]bool),
-	}
-}
-
-type ConfigMiddleware struct {
-	Logger *logrus.Logger
-	Cfg    *config.Config
-	DB     *gorm.DB
-}
-
-func NewAuthMiddleware(tokenGen domain.TokenGenerator) gin.HandlerFunc {
+func NewAuthMiddleware(tokenGen jwtutil.TokenGenerator) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		authHeader := c.GetHeader("Authorization")
 		if authHeader == "" {

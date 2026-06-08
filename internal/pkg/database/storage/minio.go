@@ -12,9 +12,9 @@ import (
 )
 
 func InitMinio(cfg *config.Config) (*minio.Client, error) {
-	minioClient, err := minio.New(cfg.AWS.Endpoint, &minio.Options{
-		Creds:  credentials.NewStaticV4(cfg.AWS.MinioAccessKey, cfg.AWS.MinioSecretKey, ""),
-		Secure: cfg.AWS.UseSSL,
+	minioClient, err := minio.New(cfg.Minio.Endpoint, &minio.Options{
+		Creds:  credentials.NewStaticV4(cfg.Minio.MinioAccessKey, cfg.Minio.MinioSecretKey, ""),
+		Secure: cfg.Minio.UseSSL,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to create minio client: %w", err)
@@ -43,7 +43,7 @@ func (s *S3Service) PutObject(ctx context.Context, input domain.UploadInput) (st
 		ContentType:  input.ContentType,
 	}
 
-	bucketName := s.cfg.AWS.BucketName
+	bucketName := s.cfg.Minio.BucketName
 	if bucketName == "" {
 		bucketName = "cozybox"
 	}
@@ -54,12 +54,21 @@ func (s *S3Service) PutObject(ctx context.Context, input domain.UploadInput) (st
 	return uploadInfo.Key, nil
 }
 
-func (s *S3Service) GetObject(ctx context.Context, bucketName string, objectName string) (*minio.Object, error) {
+// ReadObject retrieves an object from the configured S3-compatible storage
+// and passes it to the provided callback function. The object is automatically
+// closed after the callback returns, preventing resource leaks.
+func (s *S3Service) ReadObject(ctx context.Context, bucketName string, objectName string, fn func(obj *minio.Object) error) error {
 	object, err := s.client.GetObject(ctx, bucketName, objectName, minio.GetObjectOptions{})
 	if err != nil {
-		return nil, fmt.Errorf("S3Service.GetObject: %w", err)
+		return fmt.Errorf("S3Service.ReadObject: %w", err)
 	}
-	return object, nil
+	defer func() {
+		if closeErr := object.Close(); closeErr != nil {
+			log.Printf("failed to close S3 object %s/%s: %v", bucketName, objectName, closeErr)
+		}
+	}()
+
+	return fn(object)
 }
 
 func (s *S3Service) RemoveObject(ctx context.Context, bucketName string, objectName string) error {
@@ -73,5 +82,5 @@ func (s *S3Service) RemoveObject(ctx context.Context, bucketName string, objectN
 }
 
 func (s *S3Service) GenerateURL(bucket string, key string) string {
-	return fmt.Sprintf("%s/%s/%s", s.cfg.AWS.Endpoint, bucket, key)
+	return fmt.Sprintf("%s/%s/%s", s.cfg.Minio.Endpoint, bucket, key)
 }

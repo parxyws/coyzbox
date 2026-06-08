@@ -40,6 +40,9 @@ func newRedisClient(addr, password string, db int) (*Client, error) {
 	defer cancel()
 
 	if err := client.Ping(ctx).Err(); err != nil {
+		if closeErr := client.Close(); closeErr != nil {
+			return nil, fmt.Errorf("failed to connect to redis db %d: %w (also failed to close client: %v)", db, err, closeErr)
+		}
 		return nil, fmt.Errorf("failed to connect to redis db %d: %w", db, err)
 	}
 

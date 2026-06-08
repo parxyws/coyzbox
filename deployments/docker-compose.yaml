@@ -7,10 +7,10 @@ services:
     restart: always
     environment:
       POSTGRESQL_REPLICATION_MODE: master
-      POSTGRESQL_REPLICATION_USER: replication_user
-      POSTGRESQL_REPLICATION_PASSWORD: replication_password
+      POSTGRESQL_REPLICATION_USER: postgres_slave
+      POSTGRESQL_REPLICATION_PASSWORD: 1gX7FzM91ytNVwBj
       POSTGRESQL_USERNAME: postgres
-      POSTGRESQL_PASSWORD: password
+      POSTGRESQL_PASSWORD: s408RZ1ej76vl9ta
       POSTGRESQL_DATABASE: cozybox
       POSTGRESQL_PGAUDIT_LOG: READ,WRITE
       POSTGRESQL_LOG_HOSTNAME: "true"
@@ -29,11 +29,11 @@ services:
     restart: always
     environment:
       POSTGRESQL_REPLICATION_MODE: slave
-      POSTGRESQL_REPLICATION_USER: replication_user
-      POSTGRESQL_REPLICATION_PASSWORD: replication_password
+      POSTGRESQL_REPLICATION_USER: postgres_slave
+      POSTGRESQL_REPLICATION_PASSWORD: 1gX7FzM91ytNVwBj
       POSTGRESQL_MASTER_HOST: postgres-master
       POSTGRESQL_MASTER_PORT_NUMBER: 5432
-      POSTGRESQL_PASSWORD: password
+      POSTGRESQL_PASSWORD: 1gX7FzM91ytNVwBj
     volumes:
       - cozybox_postgres_replica1_data:/bitnami/postgresql
     networks:
@@ -60,8 +60,8 @@ services:
       - "9090:9090" # Web Console Port
     environment:
       MINIO_ROOT_USER: cozyadmin
-      MINIO_ROOT_PASSWORD: strongpassword
-      MINIO_LICENSE: ${MINIO_LICENSE}
+      MINIO_ROOT_PASSWORD: 215V1CK6v9V90mjC
+      MINIO_LICENSE: "eyJhbGciOiJFUzM4NCIsInR5cCI6IkpXVCJ9.eyJhaWQiOjAsImNhcCI6MCwiaWF0IjoxLjc3ODY1ODc2MDY2OTI5MTQ3MmU5LCJpc3MiOiJzdWJuZXRAbWluLmlvIiwibGlkIjoiOGFkN2ZiYjEtYTJlMy00Y2FlLWJkNjQtMDdkODBmMjUwMTNmIiwib3JnIjoiIiwicGxhbiI6IkZSRUUiLCJzdWIiOiJwYXJ4eXN1d29AZ21haWwuY29tIiwidHJpYWwiOmZhbHNlfQ.drBI6rTAwu1rUq9na9U2a3Yy0s9YjIR86fUX3ZQ9h3vvVv0b-6kF-ExbCVsOp3caeYzxOf9ql8ah23nRJPliIJIJeX4iU5BlIxQjz4865yqH5G9EyRog7nsfN8lusLLG"
     volumes:
       - cozybox_minio_data:/data
     command: server /data --console-address ":9090"

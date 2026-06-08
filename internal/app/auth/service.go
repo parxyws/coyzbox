@@ -8,10 +8,12 @@ import (
 	"log"
 	"regexp"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/oklog/ulid/v2"
 	"github.com/parxyws/cozybox/internal/domain"
+	"github.com/parxyws/cozybox/internal/pkg/jwtutil"
 	"github.com/parxyws/cozybox/internal/pkg/mail"
 	"github.com/parxyws/cozybox/internal/pkg/randutil"
 	"golang.org/x/crypto/bcrypt"
@@ -63,10 +65,11 @@ type Service struct {
 	memberRepo     TenantMemberRepository
 	orgRepo        OrganizationRepository
 	sessionStore   SessionStore
-	tokenGenerator domain.TokenGenerator
+	tokenGenerator jwtutil.TokenGenerator
 	mailer         Mailer
 	fileStorage    FileStorage
 	addr           string
+	wg             sync.WaitGroup
 }
 
 const (
@@ -80,7 +83,7 @@ func NewAuthService(
 	memberRepo TenantMemberRepository,
 	orgRepo OrganizationRepository,
 	sessionStore SessionStore,
-	tokenGenerator domain.TokenGenerator,
+	tokenGenerator jwtutil.TokenGenerator,
 	mailer Mailer,
 	fileStorage FileStorage,
 	addr string,
@@ -174,13 +177,20 @@ func (s *Service) Register(ctx context.Context, req *RegisterUserRequest) (*Regi
 		return nil, fmt.Errorf("failed to store registration data: %w", err)
 	}
 
+	s.wg.Add(1)
 	go func() {
+		defer s.wg.Done()
 		if err := s.mailer.SendOTP(req.Email, mail.OTPData{Name: req.Name, OTP: otp}); err != nil {
 			log.Printf("failed to send otp to %s: %v", req.Email, err)
 		}
 	}()
 
 	return &RegisterResponse{ReferenceId: referenceId}, nil
+}
+
+func (s *Service) Shutdown() error {
+	s.wg.Wait()
+	return nil
 }
 
 func (s *Service) VerifyEmail(ctx context.Context, req *VerifyEmailRequest) (*VerifyEmailResponse, error) {
@@ -426,7 +436,9 @@ func (s *Service) ForgotPassword(ctx context.Context, req *ForgotPasswordRequest
 		return fmt.Errorf("failed to store OTP: %w", err)
 	}
 
+	s.wg.Add(1)
 	go func() {
+		defer s.wg.Done()
 		url := fmt.Sprintf("%s/reset-password?ref=%s&token=%s", s.addr, referenceId, otp)
 		if err := s.mailer.SendResetPassword(req.Email, mail.ResetPasswordData{Name: req.Email, URL: url}); err != nil {
 			log.Printf("failed to send reset password: %v", err)

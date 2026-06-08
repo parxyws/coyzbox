@@ -29,7 +29,8 @@ func InitPostgres(cfg *config.Config) (*gorm.DB, error) {
 		}).
 			SetMaxIdleConns(10).
 			SetMaxOpenConns(100).
-			SetConnMaxLifetime(time.Hour),
+			SetConnMaxLifetime(time.Hour).
+			SetConnMaxIdleTime(30 * time.Minute),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize db resolver plugin: %w", err)

@@ -8,3 +8,7 @@ const (
 	TenantID  ContextKey = "tenant_id"
 	SessionID ContextKey = "session_id"
 )
+
+const (
+	CtxTimeout = 3
+)

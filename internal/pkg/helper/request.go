@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"log"
 	"mime/multipart"
 	"net/http"
 
@@ -33,9 +34,8 @@ func ReadImageRequest(c *gin.Context, fieldName string) (*domain.UploadInput, er
 		return nil, errors.New("unable to open image")
 	}
 	defer func(file multipart.File) {
-		err := file.Close()
-		if err != nil {
-
+		if err := file.Close(); err != nil {
+			log.Printf("failed to close multipart file: %v", err)
 		}
 	}(file)
 

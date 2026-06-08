@@ -14,7 +14,7 @@ type Config struct {
 	Server  ServerConfig        `mapstructure:"server" validate:"required"`
 	WriteDB PostgresWriteConfig `mapstructure:"write_db" validate:"required"`
 	ReadDB  PostgresReadConfig  `mapstructure:"read_db" validate:"required"`
-	AWS     AwsConfig           `mapstructure:"aws" validate:"required"`
+	Minio   MinioConfig         `mapstructure:"minio" validate:"required"`
 	Logger  LoggerConfig        `mapstructure:"logger" validate:"required"`
 	Redis   RedisConfig         `mapstructure:"redis" validate:"required"`
 	Mail    MailConfig          `mapstructure:"mail" validate:"required"`
@@ -30,6 +30,8 @@ type ServerConfig struct {
 	SSL          bool          `mapstructure:"ssl"`
 	Mode         string        `mapstructure:"mode" validate:"required,oneof=debug release test"`
 	JWTSecretKey string        `mapstructure:"jwt_secret_key" validate:"required"`
+	CertFilePath string        `mapstructure:"cert_file_path"`
+	KeyFilePath  string        `mapstructure:"key_file_path"`
 }
 
 type PostgresWriteConfig struct {
@@ -55,7 +57,7 @@ type LoggerConfig struct {
 	Development bool   `mapstructure:"development"`
 }
 
-type AwsConfig struct {
+type MinioConfig struct {
 	Endpoint       string `mapstructure:"endpoint" validate:"required"`
 	MiniEndpoint   string `mapstructure:"mini_endpoint" validate:"required"`
 	MinioAccessKey string `mapstructure:"minio_access_key" validate:"required"`
