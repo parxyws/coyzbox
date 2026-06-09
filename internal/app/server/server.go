@@ -12,6 +12,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/minio/minio-go/v7"
+	"github.com/parxyws/cozybox/internal/app/auth"
 	"github.com/parxyws/cozybox/internal/config"
 	"github.com/redis/go-redis/v9"
 	"github.com/sirupsen/logrus"
@@ -40,6 +41,7 @@ type Server struct {
 	limiterRedis *redis.Client
 	logger       *logrus.Logger
 	mail         *gomail.Dialer
+	authService  *auth.Service
 }
 
 func Initialize(config *ServerConfig) *Server {
@@ -104,6 +106,13 @@ func (s *Server) Init() error {
 
 		ctx, cancel := context.WithTimeout(context.Background(), config.CtxTimeout*time.Second)
 		defer cancel()
+
+		// Wait for async operations (e.g., email goroutines) to complete
+		if s.authService != nil {
+			if err := s.authService.Shutdown(); err != nil {
+				log.Printf("auth service shutdown error: %v", err)
+			}
+		}
 
 		if err := srv.Shutdown(ctx); err != nil {
 			return fmt.Errorf("server shutdown error: %w", err)

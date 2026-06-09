@@ -31,14 +31,14 @@ func NewAuthHandler(service AuthService) *AuthHandler {
 	return &AuthHandler{service: service}
 }
 
-func (a *AuthHandler) RegisterRoutes(route *gin.RouterGroup) {
+func (a *AuthHandler) RegisterRoutes(route *gin.RouterGroup, loginLimiter, registerLimiter, forgotPwLimiter gin.HandlerFunc) {
 	authGroup := route.Group("/auth")
 	{
-		authGroup.POST("/register", a.Register)
+		authGroup.POST("/register", registerLimiter, a.Register)
 		authGroup.POST("/verify-email", a.VerifyEmail)
-		authGroup.POST("/login", a.Login)
+		authGroup.POST("/login", loginLimiter, a.Login)
 		authGroup.POST("/refresh-token", a.RefreshToken)
-		authGroup.POST("/forgot-password", a.ForgotPassword)
+		authGroup.POST("/forgot-password", forgotPwLimiter, a.ForgotPassword)
 		authGroup.POST("/reset-password", a.ResetPassword)
 	}
 }

@@ -17,6 +17,7 @@ import (
 	"github.com/parxyws/cozybox/internal/pkg/mail"
 	"github.com/parxyws/cozybox/internal/pkg/randutil"
 	"golang.org/x/crypto/bcrypt"
+	"gorm.io/gorm"
 )
 
 type UserRepository interface {
@@ -59,6 +60,21 @@ type FileStorage interface {
 	PutObject(ctx context.Context, input domain.UploadInput) (key string, err error)
 }
 
+// TransactionManager provides the ability to execute operations within a database transaction.
+type TransactionManager interface {
+	WithTransaction(ctx context.Context, fn func(tx *gorm.DB) error) error
+}
+
+// RepoFactory creates new repository instances scoped to a given transaction.
+// This allows the service to swap repos to transactional versions without
+// embedding WithTx in the repository interfaces.
+type RepoFactory interface {
+	UserRepo(tx *gorm.DB) UserRepository
+	TenantRepo(tx *gorm.DB) TenantRepository
+	MemberRepo(tx *gorm.DB) TenantMemberRepository
+	OrgRepo(tx *gorm.DB) OrganizationRepository
+}
+
 type Service struct {
 	userRepo       UserRepository
 	tenantRepo     TenantRepository
@@ -68,6 +84,8 @@ type Service struct {
 	tokenGenerator jwtutil.TokenGenerator
 	mailer         Mailer
 	fileStorage    FileStorage
+	txManager      TransactionManager
+	repoFactory    RepoFactory
 	addr           string
 	wg             sync.WaitGroup
 }
@@ -86,6 +104,8 @@ func NewAuthService(
 	tokenGenerator jwtutil.TokenGenerator,
 	mailer Mailer,
 	fileStorage FileStorage,
+	txManager TransactionManager,
+	repoFactory RepoFactory,
 	addr string,
 ) *Service {
 	return &Service{
@@ -97,6 +117,8 @@ func NewAuthService(
 		tokenGenerator: tokenGenerator,
 		mailer:         mailer,
 		fileStorage:    fileStorage,
+		txManager:      txManager,
+		repoFactory:    repoFactory,
 		addr:           addr,
 	}
 }
@@ -123,10 +145,6 @@ func (s *Service) Register(ctx context.Context, req *RegisterUserRequest) (*Regi
 		UpdatedAt:           currentTime,
 	}
 
-	if err := s.userRepo.Insert(ctx, user); err != nil {
-		return nil, fmt.Errorf("failed to register user: %w", err)
-	}
-
 	tenantId := ulid.Make().String()
 	slug := generateSlug(req.TenantName, tenantId)
 	tenant := &domain.Tenant{
@@ -139,10 +157,6 @@ func (s *Service) Register(ctx context.Context, req *RegisterUserRequest) (*Regi
 		UpdatedAt: currentTime,
 	}
 
-	if err := s.tenantRepo.Insert(ctx, tenant); err != nil {
-		return nil, fmt.Errorf("failed to create tenant: %w", err)
-	}
-
 	member := &domain.TenantMember{
 		Id:       ulid.Make().String(),
 		TenantId: tenant.Id,
@@ -151,8 +165,28 @@ func (s *Service) Register(ctx context.Context, req *RegisterUserRequest) (*Regi
 		JoinedAt: currentTime,
 	}
 
-	if err := s.memberRepo.Insert(ctx, member); err != nil {
-		return nil, fmt.Errorf("failed to create tenant member: %w", err)
+	// Wrap User + Tenant + TenantMember creation in a single transaction
+	// to ensure atomicity — if any insert fails, everything rolls back.
+	if err := s.txManager.WithTransaction(ctx, func(tx *gorm.DB) error {
+		txUserRepo := s.repoFactory.UserRepo(tx)
+		txTenantRepo := s.repoFactory.TenantRepo(tx)
+		txMemberRepo := s.repoFactory.MemberRepo(tx)
+
+		if err := txUserRepo.Insert(ctx, user); err != nil {
+			return fmt.Errorf("failed to register user: %w", err)
+		}
+
+		if err := txTenantRepo.Insert(ctx, tenant); err != nil {
+			return fmt.Errorf("failed to create tenant: %w", err)
+		}
+
+		if err := txMemberRepo.Insert(ctx, member); err != nil {
+			return fmt.Errorf("failed to create tenant member: %w", err)
+		}
+
+		return nil
+	}); err != nil {
+		return nil, err
 	}
 
 	marshaledData, err := json.Marshal(UserResponse{
@@ -410,14 +444,24 @@ func (s *Service) CompleteOnboarding(ctx context.Context, userID string, tenantI
 		LogoS3Key:    logoS3Key,
 	}
 
-	if err := s.orgRepo.Insert(ctx, org); err != nil {
-		return fmt.Errorf("failed to save organization: %w", err)
-	}
+	// Wrap Organization insert + User update in a transaction for atomicity.
+	if err := s.txManager.WithTransaction(ctx, func(tx *gorm.DB) error {
+		txOrgRepo := s.repoFactory.OrgRepo(tx)
+		txUserRepo := s.repoFactory.UserRepo(tx)
 
-	user.OnboardingCompleted = true
-	user.UpdatedAt = time.Now()
-	if err := s.userRepo.Update(ctx, user); err != nil {
-		return fmt.Errorf("failed to complete onboarding: %w", err)
+		if err := txOrgRepo.Insert(ctx, org); err != nil {
+			return fmt.Errorf("failed to save organization: %w", err)
+		}
+
+		user.OnboardingCompleted = true
+		user.UpdatedAt = time.Now()
+		if err := txUserRepo.Update(ctx, user); err != nil {
+			return fmt.Errorf("failed to complete onboarding: %w", err)
+		}
+
+		return nil
+	}); err != nil {
+		return err
 	}
 
 	return nil

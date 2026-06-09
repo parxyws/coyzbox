@@ -10,6 +10,13 @@ import (
 	"github.com/parxyws/cozybox/internal/domain"
 )
 
+// TokenGenerator defines the interface for creating and verifying tokens.
+type TokenGenerator interface {
+	CreateAccessToken(userID string, tenantID string, sessionID string, duration time.Duration) (string, error)
+	VerifyAccessToken(token string) (*domain.Claims, error)
+	GenerateRefreshToken() (string, error)
+}
+
 const (
 	issuer   = "cozybox"
 	audience = "cozybox-api"
@@ -71,6 +78,10 @@ func (m *JWTMaker) VerifyAccessToken(tokenStr string) (*domain.Claims, error) {
 	)
 	if err != nil {
 		return nil, err
+	}
+
+	if !jwtToken.Valid {
+		return nil, errors.New("invalid token")
 	}
 
 	claims, ok := jwtToken.Claims.(*customClaims)

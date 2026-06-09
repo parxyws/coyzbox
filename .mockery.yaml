@@ -13,3 +13,14 @@ packages:
       Mailer:
       FileStorage:
       AuthService:
+      TransactionManager:
+      RepoFactory:
+  github.com/parxyws/cozybox/internal/app/user:
+    config:
+      dir: internal/app/user/mocks
+      filename: "mock_{{.InterfaceName | snakecase}}.go"
+    interfaces:
+      UserRepository:
+      TenantRepository:
+      TenantMemberRepository:
+      OrganizationRepository:
