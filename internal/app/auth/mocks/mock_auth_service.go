@@ -171,6 +171,74 @@ func (_c *MockAuthService_ForgotPassword_Call) RunAndReturn(run func(ctx context
 	return _c
 }
 
+// ListWorkspaces provides a mock function for the type MockAuthService
+func (_mock *MockAuthService) ListWorkspaces(ctx context.Context, userID string) ([]auth.WorkspaceResponse, error) {
+	ret := _mock.Called(ctx, userID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ListWorkspaces")
+	}
+
+	var r0 []auth.WorkspaceResponse
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) ([]auth.WorkspaceResponse, error)); ok {
+		return returnFunc(ctx, userID)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) []auth.WorkspaceResponse); ok {
+		r0 = returnFunc(ctx, userID)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]auth.WorkspaceResponse)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string) error); ok {
+		r1 = returnFunc(ctx, userID)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// MockAuthService_ListWorkspaces_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ListWorkspaces'
+type MockAuthService_ListWorkspaces_Call struct {
+	*mock.Call
+}
+
+// ListWorkspaces is a helper method to define mock.On call
+//   - ctx context.Context
+//   - userID string
+func (_e *MockAuthService_Expecter) ListWorkspaces(ctx interface{}, userID interface{}) *MockAuthService_ListWorkspaces_Call {
+	return &MockAuthService_ListWorkspaces_Call{Call: _e.mock.On("ListWorkspaces", ctx, userID)}
+}
+
+func (_c *MockAuthService_ListWorkspaces_Call) Run(run func(ctx context.Context, userID string)) *MockAuthService_ListWorkspaces_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *MockAuthService_ListWorkspaces_Call) Return(workspaceResponses []auth.WorkspaceResponse, err error) *MockAuthService_ListWorkspaces_Call {
+	_c.Call.Return(workspaceResponses, err)
+	return _c
+}
+
+func (_c *MockAuthService_ListWorkspaces_Call) RunAndReturn(run func(ctx context.Context, userID string) ([]auth.WorkspaceResponse, error)) *MockAuthService_ListWorkspaces_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // Login provides a mock function for the type MockAuthService
 func (_mock *MockAuthService) Login(ctx context.Context, req *auth.LoginRequest) (*auth.UserAuthenticateResponse, error) {
 	ret := _mock.Called(ctx, req)
@@ -485,6 +553,86 @@ func (_c *MockAuthService_ResetPassword_Call) Return(err error) *MockAuthService
 }
 
 func (_c *MockAuthService_ResetPassword_Call) RunAndReturn(run func(ctx context.Context, req *auth.ResetPasswordRequest) error) *MockAuthService_ResetPassword_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// SwitchWorkspace provides a mock function for the type MockAuthService
+func (_mock *MockAuthService) SwitchWorkspace(ctx context.Context, userID string, workspaceID string, sessionID string) (*auth.SwitchWorkspaceResponse, error) {
+	ret := _mock.Called(ctx, userID, workspaceID, sessionID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for SwitchWorkspace")
+	}
+
+	var r0 *auth.SwitchWorkspaceResponse
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string, string) (*auth.SwitchWorkspaceResponse, error)); ok {
+		return returnFunc(ctx, userID, workspaceID, sessionID)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string, string) *auth.SwitchWorkspaceResponse); ok {
+		r0 = returnFunc(ctx, userID, workspaceID, sessionID)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*auth.SwitchWorkspaceResponse)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, string, string) error); ok {
+		r1 = returnFunc(ctx, userID, workspaceID, sessionID)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// MockAuthService_SwitchWorkspace_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'SwitchWorkspace'
+type MockAuthService_SwitchWorkspace_Call struct {
+	*mock.Call
+}
+
+// SwitchWorkspace is a helper method to define mock.On call
+//   - ctx context.Context
+//   - userID string
+//   - workspaceID string
+//   - sessionID string
+func (_e *MockAuthService_Expecter) SwitchWorkspace(ctx interface{}, userID interface{}, workspaceID interface{}, sessionID interface{}) *MockAuthService_SwitchWorkspace_Call {
+	return &MockAuthService_SwitchWorkspace_Call{Call: _e.mock.On("SwitchWorkspace", ctx, userID, workspaceID, sessionID)}
+}
+
+func (_c *MockAuthService_SwitchWorkspace_Call) Run(run func(ctx context.Context, userID string, workspaceID string, sessionID string)) *MockAuthService_SwitchWorkspace_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 string
+		if args[2] != nil {
+			arg2 = args[2].(string)
+		}
+		var arg3 string
+		if args[3] != nil {
+			arg3 = args[3].(string)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+			arg3,
+		)
+	})
+	return _c
+}
+
+func (_c *MockAuthService_SwitchWorkspace_Call) Return(switchWorkspaceResponse *auth.SwitchWorkspaceResponse, err error) *MockAuthService_SwitchWorkspace_Call {
+	_c.Call.Return(switchWorkspaceResponse, err)
+	return _c
+}
+
+func (_c *MockAuthService_SwitchWorkspace_Call) RunAndReturn(run func(ctx context.Context, userID string, workspaceID string, sessionID string) (*auth.SwitchWorkspaceResponse, error)) *MockAuthService_SwitchWorkspace_Call {
 	_c.Call.Return(run)
 	return _c
 }

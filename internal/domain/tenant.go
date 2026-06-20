@@ -13,18 +13,26 @@ const (
 	TenantStatusInActive  TenantStatus = "inactive"
 )
 
+type WorkspaceType string
+
+const (
+	WorkspacePersonal WorkspaceType = "personal"
+	WorkspaceTeam     WorkspaceType = "team"
+)
+
 // Tenant is the top-level isolation boundary for the entire SaaS system.
 // Every data access path (documents, contacts, sequences, organizations)
 // is scoped by tenant_id, enforced through middleware and GORM scopes.
 type Tenant struct {
-	Id        string       `json:"id" gorm:"column:id;primaryKey"`
-	Name      string       `json:"name" gorm:"column:name"`
-	Slug      string       `json:"slug" gorm:"column:slug;uniqueIndex"`
-	Status    TenantStatus `json:"status" gorm:"column:status;default:active"`
-	OwnerId   string       `json:"owner_id" gorm:"column:owner_id"`
-	CreatedAt time.Time    `json:"created_at" gorm:"column:created_at"`
-	UpdatedAt time.Time    `json:"updated_at" gorm:"column:updated_at"`
-	DeletedAt sql.NullTime `json:"deleted_at" gorm:"column:deleted_at"`
+	Id        string        `json:"id" gorm:"column:id;primaryKey"`
+	Name      string        `json:"name" gorm:"column:name"`
+	Slug      string        `json:"slug" gorm:"column:slug;uniqueIndex"`
+	Status    TenantStatus  `json:"status" gorm:"column:status;default:active"`
+	Type      WorkspaceType `json:"type" gorm:"column:type;default:personal"`
+	OwnerId   string        `json:"owner_id" gorm:"column:owner_id"`
+	CreatedAt time.Time     `json:"created_at" gorm:"column:created_at"`
+	UpdatedAt time.Time     `json:"updated_at" gorm:"column:updated_at"`
+	DeletedAt sql.NullTime  `json:"deleted_at" gorm:"column:deleted_at"`
 
 	// Relations
 	Owner        User           `json:"owner" gorm:"foreignKey:OwnerId;references:Id"`

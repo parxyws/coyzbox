@@ -26,3 +26,16 @@ func (r *TenantMemberRepo) GetByUserID(ctx context.Context, userID string) (*dom
 	}
 	return &member, nil
 }
+
+func (r *TenantMemberRepo) ListByUserID(ctx context.Context, userID string) ([]domain.TenantMember, error) {
+	var members []domain.TenantMember
+	err := r.DB.WithContext(ctx).
+		Preload("Tenant").
+		Where("user_id = ?", userID).
+		Order("CASE WHEN role = 'owner' THEN 0 ELSE 1 END, joined_at ASC").
+		Find(&members).Error
+	if err != nil {
+		return nil, err
+	}
+	return members, nil
+}

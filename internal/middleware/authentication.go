@@ -6,12 +6,11 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
-	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/parxyws/cozybox/internal/config"
 	"github.com/parxyws/cozybox/internal/domain"
-	"github.com/parxyws/cozybox/internal/pkg/jwtutil"
+	"github.com/parxyws/cozybox/internal/pkg/jwt"
 )
 
 // SessionValidator retrieves session data from the session store.
@@ -30,7 +29,7 @@ type SessionValidator interface {
 //  3. Validate that the session still exists in Redis (immediate logout enforcement)
 //  4. Verify the user_id in the session matches the JWT claim (session hijacking detection)
 //  5. Set user_id, tenant_id, session_id in both Gin and Go context
-func NewAuthMiddleware(tokenGen jwtutil.TokenGenerator, sessionStore SessionValidator) gin.HandlerFunc {
+func NewAuthMiddleware(tokenGen jwt.TokenGenerator, sessionStore SessionValidator) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		authHeader := c.GetHeader("Authorization")
 		if authHeader == "" {
@@ -68,12 +67,6 @@ func NewAuthMiddleware(tokenGen jwtutil.TokenGenerator, sessionStore SessionVali
 
 		if session.UserID != claims.UserID {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "session mismatch"})
-			return
-		}
-
-		// Check if session has expired (belt-and-suspenders with Redis TTL)
-		if time.Now().After(session.ExpiresAt) {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "session expired"})
 			return
 		}
 

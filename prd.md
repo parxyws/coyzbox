@@ -114,7 +114,7 @@ In v1.0, CozyBox focuses on **six standard financial document types**: Quotation
 *   **Time-to-PDF:** Average time from template selection to download (Target: < 120 seconds).
 *   **Documents per Tenant:** Number of documents generated per active tenant per month.
 *   **Onboarding Completion:** % of users who complete organization profile setup.
-*   **Document Lifecycle Completion:** % of documents that reach a terminal status (paid, cancelled, rejected).
+*   **Document Lifecycle Completion:** % of documents that reach a terminal status (paid, canceled, rejected).
 
 ---
 

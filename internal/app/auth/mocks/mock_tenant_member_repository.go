@@ -162,3 +162,71 @@ func (_c *MockTenantMemberRepository_Insert_Call) RunAndReturn(run func(ctx cont
 	_c.Call.Return(run)
 	return _c
 }
+
+// ListByUserID provides a mock function for the type MockTenantMemberRepository
+func (_mock *MockTenantMemberRepository) ListByUserID(ctx context.Context, userID string) ([]domain.TenantMember, error) {
+	ret := _mock.Called(ctx, userID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ListByUserID")
+	}
+
+	var r0 []domain.TenantMember
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) ([]domain.TenantMember, error)); ok {
+		return returnFunc(ctx, userID)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) []domain.TenantMember); ok {
+		r0 = returnFunc(ctx, userID)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]domain.TenantMember)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string) error); ok {
+		r1 = returnFunc(ctx, userID)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// MockTenantMemberRepository_ListByUserID_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ListByUserID'
+type MockTenantMemberRepository_ListByUserID_Call struct {
+	*mock.Call
+}
+
+// ListByUserID is a helper method to define mock.On call
+//   - ctx context.Context
+//   - userID string
+func (_e *MockTenantMemberRepository_Expecter) ListByUserID(ctx interface{}, userID interface{}) *MockTenantMemberRepository_ListByUserID_Call {
+	return &MockTenantMemberRepository_ListByUserID_Call{Call: _e.mock.On("ListByUserID", ctx, userID)}
+}
+
+func (_c *MockTenantMemberRepository_ListByUserID_Call) Run(run func(ctx context.Context, userID string)) *MockTenantMemberRepository_ListByUserID_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *MockTenantMemberRepository_ListByUserID_Call) Return(tenantMembers []domain.TenantMember, err error) *MockTenantMemberRepository_ListByUserID_Call {
+	_c.Call.Return(tenantMembers, err)
+	return _c
+}
+
+func (_c *MockTenantMemberRepository_ListByUserID_Call) RunAndReturn(run func(ctx context.Context, userID string) ([]domain.TenantMember, error)) *MockTenantMemberRepository_ListByUserID_Call {
+	_c.Call.Return(run)
+	return _c
+}

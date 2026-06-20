@@ -5,10 +5,10 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+	"github.com/parxyws/cozybox/internal/config"
+	"github.com/parxyws/cozybox/internal/domain"
 	"github.com/parxyws/cozybox/internal/pkg/helper"
 	"github.com/parxyws/cozybox/internal/pkg/validator"
-
-	"github.com/parxyws/cozybox/internal/domain"
 )
 
 // AuthService is the consuming-side interface for auth operations.
@@ -21,6 +21,8 @@ type AuthService interface {
 	CompleteOnboarding(ctx context.Context, userID string, tenantID string, req *OnboardingRequest, image *domain.UploadInput) error
 	ForgotPassword(ctx context.Context, req *ForgotPasswordRequest) error
 	ResetPassword(ctx context.Context, req *ResetPasswordRequest) error
+	ListWorkspaces(ctx context.Context, userID string) ([]WorkspaceResponse, error)
+	SwitchWorkspace(ctx context.Context, userID, workspaceID, sessionID string) (*SwitchWorkspaceResponse, error)
 }
 
 type AuthHandler struct {
@@ -48,6 +50,58 @@ func (a *AuthHandler) RegisterProtectedRoutes(route *gin.RouterGroup) {
 	{
 		authGroup.POST("/logout", a.Logout)
 	}
+	route.GET("/workspaces", a.ListWorkspaces)
+	route.POST("/workspaces/switch", a.SwitchWorkspace)
+}
+
+func (a *AuthHandler) ListWorkspaces(c *gin.Context) {
+	ctx, cancel := helper.GetContext(c)
+	defer cancel()
+
+	userID, exists := c.Get(string(config.UserID))
+	if !exists {
+		helper.Error(c, http.StatusUnauthorized, "Unauthorized", nil)
+		return
+	}
+
+	result, err := a.service.ListWorkspaces(ctx, userID.(string))
+	if err != nil {
+		helper.Error(c, http.StatusInternalServerError, "Failed to list workspaces", err)
+		return
+	}
+
+	helper.Success(c, http.StatusOK, "Workspaces retrieved successfully", result)
+}
+
+func (a *AuthHandler) SwitchWorkspace(c *gin.Context) {
+	ctx, cancel := helper.GetContext(c)
+	defer cancel()
+
+	userID, exists := c.Get(string(config.UserID))
+	sessionID, sessionExists := c.Get(string(config.SessionID))
+	if !exists || !sessionExists {
+		helper.Error(c, http.StatusUnauthorized, "Unauthorized", nil)
+		return
+	}
+
+	var req SwitchWorkspaceRequest
+	if err := c.ShouldBindBodyWithJSON(&req); err != nil {
+		helper.Error(c, http.StatusBadRequest, "Invalid request body", err)
+		return
+	}
+
+	if err := validator.Validate.StructCtx(ctx, req); err != nil {
+		helper.Error(c, http.StatusBadRequest, "Invalid request body", err)
+		return
+	}
+
+	result, err := a.service.SwitchWorkspace(ctx, userID.(string), req.WorkspaceID, sessionID.(string))
+	if err != nil {
+		helper.Error(c, http.StatusUnauthorized, "Failed to switch workspace", err)
+		return
+	}
+
+	helper.Success(c, http.StatusOK, "Workspace switched successfully", result)
 }
 
 func (a *AuthHandler) Register(c *gin.Context) {

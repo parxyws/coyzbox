@@ -66,16 +66,28 @@ type VerifyEmailResponse struct {
 }
 
 type UserAuthenticateResponse struct {
-	AccessToken  string         `json:"access_token"`
-	RefreshToken string         `json:"refresh_token"`
-	TokenType    string         `json:"token_type"`
-	User         UserResponse   `json:"user"`
-	Tenant       TenantResponse `json:"tenant"`
+	AccessToken     string              `json:"access_token"`
+	RefreshToken    string              `json:"refresh_token"`
+	TokenType       string              `json:"token_type"`
+	User            UserResponse        `json:"user"`
+	Tenant          WorkspaceResponse   `json:"tenant"`
+	Workspaces      []WorkspaceResponse `json:"workspaces"`
+	ActiveWorkspace string              `json:"active_workspace"`
 }
 
-type TenantResponse struct {
+type WorkspaceResponse struct {
 	Id   string `json:"id"`
 	Name string `json:"name"`
 	Slug string `json:"slug"`
 	Role string `json:"role"`
+	Type string `json:"type"`
+}
+
+type SwitchWorkspaceRequest struct {
+	WorkspaceID string `json:"workspace_id" validate:"required"`
+}
+
+type SwitchWorkspaceResponse struct {
+	AccessToken string            `json:"access_token"`
+	Workspace   WorkspaceResponse `json:"workspace"`
 }

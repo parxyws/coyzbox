@@ -1,7 +1,8 @@
 package main
 
 import (
-	"log"
+	"fmt"
+	"os"
 
 	"github.com/parxyws/cozybox/internal/app/server"
 	"github.com/parxyws/cozybox/internal/config"
@@ -15,13 +16,14 @@ import (
 func main() {
 	cfg, err := config.InitAppConfig()
 	if err != nil {
-		log.Fatalf("failed to load config: %v", err)
+		fmt.Fprintf(os.Stderr, "failed to load config: %v\n", err)
+		os.Exit(1)
 	}
 
 	logrusLogger, logWriter := logger.NewLogger(cfg)
 	defer func() {
 		if err := logWriter.Close(); err != nil {
-			log.Printf("failed to close log writer: %v", err)
+			fmt.Fprintf(os.Stderr, "failed to close log writer: %v\n", err)
 		}
 	}()
 
@@ -75,7 +77,7 @@ func main() {
 		logrusLogger.Fatalf("failed to connect to minio: %v", err)
 	}
 
-	//tokenMaker, err := jwtutil.NewJWTMaker(cfg.Server.JWTSecretKey)
+	//tokenMaker, err := jwt.NewJWTMaker(cfg.Server.JWTSecretKey)
 	//if err != nil {
 	//	logrusLogger.Fatalf("failed to create jwt maker: %v", err)
 	//}

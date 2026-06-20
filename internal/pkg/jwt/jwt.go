@@ -1,4 +1,4 @@
-package jwtutil
+package jwt
 
 import (
 	"crypto/rand"
@@ -61,7 +61,7 @@ func (m *JWTMaker) CreateAccessToken(userID, tenantID, sessionID string, duratio
 }
 
 func (m *JWTMaker) VerifyAccessToken(tokenStr string) (*domain.Claims, error) {
-	keyFunc := func(token *jwt.Token) (interface{}, error) {
+	keyFunc := func(token *jwt.Token) (any, error) {
 		_, ok := token.Method.(*jwt.SigningMethodHMAC)
 		if !ok {
 			return nil, errors.New("invalid signing method")

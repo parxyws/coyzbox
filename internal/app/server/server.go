@@ -3,7 +3,6 @@ package server
 import (
 	"context"
 	"fmt"
-	"log"
 	"net/http"
 	"os"
 	"os/signal"
@@ -102,22 +101,21 @@ func (s *Server) Init() error {
 	case err := <-serverError:
 		return fmt.Errorf("server error: %w", err)
 	case sig := <-quit:
-		log.Printf("received signal %v, shutting down server...", sig)
+		s.logger.Infof("received signal %v, shutting down server...", sig)
 
 		ctx, cancel := context.WithTimeout(context.Background(), config.CtxTimeout*time.Second)
 		defer cancel()
 
-		// Wait for async operations (e.g., email goroutines) to complete
 		if s.authService != nil {
 			if err := s.authService.Shutdown(); err != nil {
-				log.Printf("auth service shutdown error: %v", err)
+				s.logger.Errorf("auth service shutdown error: %v", err)
 			}
 		}
 
 		if err := srv.Shutdown(ctx); err != nil {
 			return fmt.Errorf("server shutdown error: %w", err)
 		}
-		log.Println("server shutdown gracefully")
+		s.logger.Info("server shutdown gracefully")
 		return nil
 	}
 }

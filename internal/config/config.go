@@ -109,7 +109,7 @@ func InitAppConfig() (*Config, error) {
 	} else {
 		// fallback: project root
 		v.AddConfigPath(".")
-		v.AddConfigPath("./config")
+		v.AddConfigPath("./configs")
 	}
 
 	if err := v.ReadInConfig(); err != nil {

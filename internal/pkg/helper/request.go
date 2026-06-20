@@ -4,9 +4,9 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
-	"log"
 	"mime/multipart"
 	"net/http"
+	"os"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -35,7 +35,7 @@ func ReadImageRequest(c *gin.Context, fieldName string) (*domain.UploadInput, er
 	}
 	defer func(file multipart.File) {
 		if err := file.Close(); err != nil {
-			log.Printf("failed to close multipart file: %v", err)
+			fmt.Fprintf(os.Stderr, "failed to close multipart file: %v\n", err)
 		}
 	}(file)
 
@@ -71,5 +71,3 @@ func generateShortUUID() string {
 	u := uuid.New()
 	return u.String()[:12]
 }
-
-var _ multipart.File

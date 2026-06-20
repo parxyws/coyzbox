@@ -1,0 +1,658 @@
+### =============================================================================
+### Cozybox API — HTTP Request Collection
+### Base URL: http://localhost:8080/api
+### 
+### Usage:
+###   VS Code: Install "REST Client" extension (humao.rest-client)
+###   JetBrains: Built-in HTTP Client
+###   IntelliJ: Open this file and click the green play button on any request
+###
+### Run "Register" first to create a user, then copy the OTP from Redis
+### into "Verify Email", then "Login" to get tokens for protected routes.
+### =============================================================================
+
+@baseUrl = http://localhost:8080/api
+@accessToken = {{login.response.body.access_token}}
+@refreshToken = {{login.response.body.refresh_token}}
+@referenceId = {{register.response.body.reference_id}}
+# NOTE: session_id is embedded in the JWT. Decode the access_token at jwt.io
+# to get the session_id claim, then paste it below.
+@sessionId = <paste-session-id-from-jwt-here>
+# workspace_id comes from login response workspaces list or active_workspace field
+@workspaceId = {{login.response.body.active_workspace}}
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# AUTH — Public Routes
+# ═══════════════════════════════════════════════════════════════════════════════
+
+
+### ── Register ─────────────────────────────────────────────────────────────────
+### Success: creates user + tenant, sends OTP email
+POST {{baseUrl}}/auth/register
+Content-Type: application/json
+X-Forwarded-For: 10.0.0.101
+
+{
+  "name": "John Doe",
+  "username": "johndoe",
+  "email": "kfiyyanp@gmail.com",
+  "password": "securePass123",
+  "tenant_name": "John's Space"
+}
+
+
+### Edge: missing required field (name)
+POST {{baseUrl}}/auth/register
+Content-Type: application/json
+
+{
+  "username": "nodename",
+  "email": "noname@example.com",
+  "password": "securePass123",
+  "tenant_name": "No Name"
+}
+
+
+### Edge: short password (<8)
+POST {{baseUrl}}/auth/register
+Content-Type: application/json
+
+{
+  "name": "Short Pass",
+  "username": "shortpass",
+  "email": "short@example.com",
+  "password": "123",
+  "tenant_name": "Short Pass"
+}
+
+
+### Edge: invalid email
+POST {{baseUrl}}/auth/register
+Content-Type: application/json
+
+{
+  "name": "Bad Email",
+  "username": "bademail",
+  "email": "not-an-email",
+  "password": "securePass123",
+  "tenant_name": "Bad Email"
+}
+
+
+### Edge: rate limit (3 requests / 60s — run this 4 times to see 429)
+POST {{baseUrl}}/auth/register
+Content-Type: application/json
+X-Forwarded-For: 10.0.0.102
+
+{
+  "name": "Rate Limit",
+  "username": "ratelimitreg",
+  "email": "ratelimit1@example.com",
+  "password": "securePass123",
+  "tenant_name": "Rate Limited"
+}
+
+
+### Edge: duplicate email (run Register success first, then this)
+POST {{baseUrl}}/auth/register
+Content-Type: application/json
+
+{
+  "name": "John Again",
+  "username": "johnagain",
+  "email": "john@example.com",
+  "password": "securePass123",
+  "tenant_name": "John Again"
+}
+
+
+### ── Verify Email ─────────────────────────────────────────────────────────────
+### Success: copy referenceId from Register response
+### Get OTP from Redis: redis-cli GET "otp-{{referenceId}}"
+POST {{baseUrl}}/auth/verify-email
+Content-Type: application/json
+
+{
+  "reference_id": "{{referenceId}}",
+  "otp": "123456"
+}
+
+
+### Edge: invalid OTP
+POST {{baseUrl}}/auth/verify-email
+Content-Type: application/json
+
+{
+  "reference_id": "{{referenceId}}",
+  "otp": "000000"
+}
+
+
+### Edge: missing reference_id
+POST {{baseUrl}}/auth/verify-email
+Content-Type: application/json
+
+{
+  "otp": "123456"
+}
+
+
+### Edge: OTP with wrong length
+POST {{baseUrl}}/auth/verify-email
+Content-Type: application/json
+
+{
+  "reference_id": "{{referenceId}}",
+  "otp": "12"
+}
+
+
+### Edge: whitespace-trimmed reference_id
+POST {{baseUrl}}/auth/verify-email
+Content-Type: application/json
+
+{
+  "reference_id": "  {{referenceId}}  ",
+  "otp": "123456"
+}
+
+
+### ── Login ────────────────────────────────────────────────────────────────────
+### Success: returns access_token, refresh_token, user, workspace list
+### Prerequisite: email must be verified first
+POST {{baseUrl}}/auth/login
+Content-Type: application/json
+X-Forwarded-For: 10.0.0.201
+
+{
+  "email": "john@example.com",
+  "password": "securePass123"
+}
+
+
+### Edge: wrong password
+POST {{baseUrl}}/auth/login
+Content-Type: application/json
+
+{
+  "email": "john@example.com",
+  "password": "wrongPassword"
+}
+
+
+### Edge: non-existent user
+POST {{baseUrl}}/auth/login
+Content-Type: application/json
+
+{
+  "email": "doesnotexist@example.com",
+  "password": "anything"
+}
+
+
+### Edge: email not verified (register a new user, skip verify, try login)
+POST {{baseUrl}}/auth/login
+Content-Type: application/json
+
+{
+  "email": "unverified@example.com",
+  "password": "securePass123"
+}
+
+
+### Edge: missing email field
+POST {{baseUrl}}/auth/login
+Content-Type: application/json
+
+{
+  "password": "securePass123"
+}
+
+
+### Edge: rate limit (5 requests / 60s — run 6 times to see 429)
+POST {{baseUrl}}/auth/login
+Content-Type: application/json
+X-Forwarded-For: 10.0.0.202
+
+{
+  "email": "ratelimit@example.com",
+  "password": "securePass123"
+}
+
+
+### ── Refresh Token ────────────────────────────────────────────────────────────
+### Success: returns new access_token + refresh_token pair
+### Uses session_id from the login response (JWT claim)
+POST {{baseUrl}}/auth/refresh-token
+Content-Type: application/json
+
+{
+  "session_id": "{{sessionId}}",
+  "refresh_token": "{{refreshToken}}"
+}
+
+
+### Edge: invalid session_id
+POST {{baseUrl}}/auth/refresh-token
+Content-Type: application/json
+
+{
+  "session_id": "non-existent-session",
+  "refresh_token": "{{refreshToken}}"
+}
+
+
+### Edge: wrong refresh token
+POST {{baseUrl}}/auth/refresh-token
+Content-Type: application/json
+
+{
+  "session_id": "{{sessionId}}",
+  "refresh_token": "wrong-refresh-token-here"
+}
+
+
+### Edge: missing session_id
+POST {{baseUrl}}/auth/refresh-token
+Content-Type: application/json
+
+{
+  "refresh_token": "{{refreshToken}}"
+}
+
+
+### Edge: expired session (will fail once session TTL passes)
+POST {{baseUrl}}/auth/refresh-token
+Content-Type: application/json
+
+{
+  "session_id": "expired-session-id",
+  "refresh_token": "{{refreshToken}}"
+}
+
+
+### ── Forgot Password ──────────────────────────────────────────────────────────
+### Success: stores OTP in Redis, sends email
+POST {{baseUrl}}/auth/forgot-password
+Content-Type: application/json
+X-Forwarded-For: 10.0.0.301
+
+{
+  "email": "john@example.com"
+}
+
+
+### Edge: missing email
+POST {{baseUrl}}/auth/forgot-password
+Content-Type: application/json
+
+{
+}
+
+
+### Edge: non-existent email (returns success to prevent enumeration)
+POST {{baseUrl}}/auth/forgot-password
+Content-Type: application/json
+
+{
+  "email": "nobody@example.com"
+}
+
+
+### Edge: rate limit (3 requests / 60s — run 4 times to see 429)
+POST {{baseUrl}}/auth/forgot-password
+Content-Type: application/json
+X-Forwarded-For: 10.0.0.302
+
+{
+  "email": "ratelimitfp@example.com"
+}
+
+
+### ── Reset Password ───────────────────────────────────────────────────────────
+### Success: gets OTP from Redis (from Forgot Password), resets password
+### Get OTP: redis-cli GET "otp-<reference_id>"
+POST {{baseUrl}}/auth/reset-password
+Content-Type: application/json
+
+{
+  "email": "john@example.com",
+  "reference_id": "<base64-email>-<ulid>",
+  "token": "123456",
+  "password": "newSecurePass456"
+}
+
+
+### Edge: invalid OTP
+POST {{baseUrl}}/auth/reset-password
+Content-Type: application/json
+
+{
+  "email": "john@example.com",
+  "reference_id": "<base64-email>-<ulid>",
+  "token": "000000",
+  "password": "newSecurePass456"
+}
+
+
+### Edge: missing reference_id
+POST {{baseUrl}}/auth/reset-password
+Content-Type: application/json
+
+{
+  "email": "john@example.com",
+  "token": "123456",
+  "password": "newSecurePass456"
+}
+
+
+### Edge: bad reference format (no dash)
+POST {{baseUrl}}/auth/reset-password
+Content-Type: application/json
+
+{
+  "email": "john@example.com",
+  "reference_id": "nodasheshere",
+  "token": "123456",
+  "password": "newSecurePass456"
+}
+
+
+### Edge: invalid base64 in reference
+POST {{baseUrl}}/auth/reset-password
+Content-Type: application/json
+
+{
+  "email": "john@example.com",
+  "reference_id": "!!!invalid-base64!!!--01FACE",
+  "token": "123456",
+  "password": "newSecurePass456"
+}
+
+
+### Edge: short new password
+POST {{baseUrl}}/auth/reset-password
+Content-Type: application/json
+
+{
+  "email": "john@example.com",
+  "reference_id": "<base64-email>-<ulid>",
+  "token": "123456",
+  "password": "short"
+}
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# AUTH — Protected Routes (require Bearer token from Login)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+
+### ── Logout ───────────────────────────────────────────────────────────────────
+### Success: invalidates the session in Redis
+POST {{baseUrl}}/auth/logout
+Authorization: Bearer {{accessToken}}
+
+
+### Edge: no Authorization header
+POST {{baseUrl}}/auth/logout
+
+
+### Edge: invalid token format (not Bearer)
+POST {{baseUrl}}/auth/logout
+Authorization: Basic dXNlcjpwYXNz
+
+
+### Edge: expired/forged JWT
+POST {{baseUrl}}/auth/logout
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dozjgNryP4J3jVmNHl0w5N_XgL0n3I9PlFUP0THsR8U
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# WORKSPACES — Protected Routes
+# ═══════════════════════════════════════════════════════════════════════════════
+
+
+### ── List Workspaces ──────────────────────────────────────────────────────────
+### Success: returns all workspaces for the authenticated user
+GET {{baseUrl}}/workspaces
+Authorization: Bearer {{accessToken}}
+
+
+### Edge: no auth token
+GET {{baseUrl}}/workspaces
+
+
+### Edge: expired token
+GET {{baseUrl}}/workspaces
+Authorization: Bearer {{accessToken}}
+
+
+### ── Switch Workspace ─────────────────────────────────────────────────────────
+### Success: returns new access token scoped to the target workspace
+### Use a workspace_id from the Login response workspaces list
+POST {{baseUrl}}/workspaces/switch
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "workspace_id": "<workspace-id-from-login-response>"
+}
+
+
+### Edge: workspace does not exist / user not a member
+POST {{baseUrl}}/workspaces/switch
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "workspace_id": "non-existent-workspace"
+}
+
+
+### Edge: no auth token
+POST {{baseUrl}}/workspaces/switch
+Content-Type: application/json
+
+{
+  "workspace_id": "anything"
+}
+
+
+### Edge: missing workspace_id
+POST {{baseUrl}}/workspaces/switch
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+}
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# USER — Protected Routes
+# ═══════════════════════════════════════════════════════════════════════════════
+
+
+### ── Get Profile ─────────────────────────────────────────────────────────────
+### Success: returns the authenticated user's profile
+GET {{baseUrl}}/user/profile
+Authorization: Bearer {{accessToken}}
+
+
+### Edge: no auth token
+GET {{baseUrl}}/user/profile
+
+
+### Edge: expired token
+GET {{baseUrl}}/user/profile
+Authorization: Bearer {{accessToken}}
+
+
+### ── Update Profile ───────────────────────────────────────────────────────────
+### Success: updates name only
+PUT {{baseUrl}}/user/profile
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "name": "John Updated",
+  "username": "john_updated"
+}
+
+
+### Success: updates username only
+PUT {{baseUrl}}/user/profile
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "username": "johnny"
+}
+
+
+### Success: no-op (both fields empty — short-circuits to GetProfile)
+PUT {{baseUrl}}/user/profile
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+}
+
+
+### Edge: name too short (<2)
+PUT {{baseUrl}}/user/profile
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "name": "A"
+}
+
+
+### Edge: username too short (<3)
+PUT {{baseUrl}}/user/profile
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "username": "ab"
+}
+
+
+### Edge: no auth token
+PUT {{baseUrl}}/user/profile
+Content-Type: application/json
+
+{
+  "name": "No Auth"
+}
+
+
+### ── Update Password ──────────────────────────────────────────────────────────
+### Success: changes password (use the current password set during registration)
+### After this, login works only with the new password
+PUT {{baseUrl}}/user/password
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "current_password": "securePass123",
+  "new_password": "newSecurePass999"
+}
+
+
+### Edge: wrong current password
+PUT {{baseUrl}}/user/password
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "current_password": "wrongPasswordHere",
+  "new_password": "newSecurePass999"
+}
+
+
+### Edge: new password too short
+PUT {{baseUrl}}/user/password
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "current_password": "securePass123",
+  "new_password": "shrt"
+}
+
+
+### Edge: missing current_password
+PUT {{baseUrl}}/user/password
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "new_password": "newSecurePass999"
+}
+
+
+### Edge: no auth token
+PUT {{baseUrl}}/user/password
+Content-Type: application/json
+
+{
+  "current_password": "securePass123",
+  "new_password": "newSecurePass999"
+}
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# RATE LIMIT TESTING — Repeat these rapidly
+# ═══════════════════════════════════════════════════════════════════════════════
+
+### Rate limit: register (3/60s) — send 4x with same IP
+POST {{baseUrl}}/auth/register
+Content-Type: application/json
+X-Forwarded-For: 10.99.99.1
+
+{
+  "name": "RL Test {{$randomInt}}",
+  "username": "rltest{{$randomInt}}",
+  "email": "rltest{{$randomInt}}@example.com",
+  "password": "securePass123",
+  "tenant_name": "RL Test {{$randomInt}}"
+}
+
+
+### Rate limit: login (5/60s) — send 6x with same IP to trigger 429
+### Note: this returns 401 not 429 if credentials are wrong, so use valid credentials
+POST {{baseUrl}}/auth/login
+Content-Type: application/json
+X-Forwarded-For: 10.99.99.2
+
+{
+  "email": "john@example.com",
+  "password": "securePass123"
+}
+
+
+### Rate limit: forgot password (3/60s) — send 4x with same IP
+POST {{baseUrl}}/auth/forgot-password
+Content-Type: application/json
+X-Forwarded-For: 10.99.99.3
+
+{
+  "email": "ratelimitfp@example.com"
+}
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# CORS & SECURITY
+# ═══════════════════════════════════════════════════════════════════════════════
+
+### CORS preflight
+OPTIONS {{baseUrl}}/auth/login
+Origin: http://localhost:3000
+Access-Control-Request-Method: POST
+Access-Control-Request-Headers: Content-Type
+
+
+### Request-ID header present in response
+GET {{baseUrl}}/auth/login

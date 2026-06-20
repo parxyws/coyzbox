@@ -34,7 +34,7 @@ func (m *Mailer) SendWelcomeEmail(to, subject string, data OTPData) error {
 	return m.sendTemplate(to, subject, path.Join("internal", "pkg", "mail", "template", "welcome.html"), data)
 }
 
-func (m *Mailer) sendTemplate(to, subject, filePath string, data interface{}) error {
+func (m *Mailer) sendTemplate(to, subject, filePath string, data any) error {
 	tmpl, err := template.ParseFiles(filePath)
 	if err != nil {
 		return err

@@ -3,7 +3,7 @@ package storage
 import (
 	"context"
 	"fmt"
-	"log"
+	"os"
 
 	"github.com/minio/minio-go/v7"
 	"github.com/minio/minio-go/v7/pkg/credentials"
@@ -22,7 +22,10 @@ func InitMinio(cfg *config.Config) (*minio.Client, error) {
 
 	_, err = minioClient.ListBuckets(context.Background())
 	if err != nil {
-		log.Printf("warning: created MinIO client but failed to ping server: %v", err)
+		_, err := fmt.Fprintf(os.Stderr, "warning: created MinIO client but failed to ping server: %v\n", err)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	return minioClient, nil
@@ -64,7 +67,7 @@ func (s *S3Service) ReadObject(ctx context.Context, bucketName string, objectNam
 	}
 	defer func() {
 		if closeErr := object.Close(); closeErr != nil {
-			log.Printf("failed to close S3 object %s/%s: %v", bucketName, objectName, closeErr)
+			fmt.Fprintf(os.Stderr, "failed to close S3 object %s/%s: %v\n", bucketName, objectName, closeErr)
 		}
 	}()
 

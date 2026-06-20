@@ -2,39 +2,101 @@ package user
 
 import (
 	"context"
+	"errors"
 
-	"github.com/parxyws/cozybox/internal/domain"
+	"github.com/parxyws/cozybox/internal/config"
+	"golang.org/x/crypto/bcrypt"
 )
 
-type UserRepository interface {
-	Insert(ctx context.Context, user *domain.User) error
-	Update(ctx context.Context, user *domain.User) error
-	GetByID(ctx context.Context, id string) (*domain.User, error)
-	GetByEmail(ctx context.Context, email string) (*domain.User, error)
-	GetByUsername(ctx context.Context, username string) (*domain.User, error)
-}
-
-type TenantRepository interface {
-	Insert(ctx context.Context, tenant *domain.Tenant) error
-	Update(ctx context.Context, tenant *domain.Tenant) error
-	GetByID(ctx context.Context, id string) (*domain.Tenant, error)
-	GetBySlug(ctx context.Context, slug string) (*domain.Tenant, error)
-}
-
-type TenantMemberRepository interface {
-	Insert(ctx context.Context, member *domain.TenantMember) error
-	GetByUserID(ctx context.Context, userID string) (*domain.TenantMember, error)
-}
-
-type OrganizationRepository interface {
-	Insert(ctx context.Context, org *domain.Organization) error
-	Update(ctx context.Context, org *domain.Organization) error
-	GetByID(ctx context.Context, id string) (*domain.Organization, error)
-}
-
 type Service struct {
-	userRepo   UserRepository
-	tenantRepo TenantRepository
-	memberRepo TenantMemberRepository
-	orgRepo    OrganizationRepository
+	userRepo UserRepository
+}
+
+func NewUserService(userRepo UserRepository) *Service {
+	return &Service{userRepo: userRepo}
+}
+
+func (s *Service) GetProfile(ctx context.Context) (*UserProfileResponse, error) {
+	id, ok := ctx.Value(config.UserID).(string)
+	if !ok || id == "" {
+		return nil, errors.New("unauthorized: user context missing")
+	}
+
+	user, err := s.userRepo.GetByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+
+	return &UserProfileResponse{
+		Id:                  user.Id,
+		Name:                user.Name,
+		Username:            user.Username,
+		Email:               user.Email,
+		IsVerified:          user.IsVerified,
+		ForcePasswordChange: user.ForcePasswordChange,
+		OnboardingCompleted: user.OnboardingCompleted,
+	}, nil
+}
+
+func (s *Service) UpdateProfile(ctx context.Context, req *UpdateProfileRequest) (*UserProfileResponse, error) {
+	id, ok := ctx.Value(config.UserID).(string)
+	if !ok || id == "" {
+		return nil, errors.New("unauthorized: user context missing")
+	}
+
+	user, err := s.userRepo.GetByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+
+	if req.Name == "" && req.Username == "" {
+		return s.GetProfile(ctx)
+	}
+
+	if req.Name != "" {
+		user.Name = req.Name
+	}
+	if req.Username != "" {
+		user.Username = req.Username
+	}
+
+	if err := s.userRepo.Update(ctx, user); err != nil {
+		return nil, err
+	}
+
+	return &UserProfileResponse{
+		Id:                  user.Id,
+		Name:                user.Name,
+		Username:            user.Username,
+		Email:               user.Email,
+		IsVerified:          user.IsVerified,
+		ForcePasswordChange: user.ForcePasswordChange,
+		OnboardingCompleted: user.OnboardingCompleted,
+	}, nil
+}
+
+func (s *Service) UpdatePassword(ctx context.Context, req *UpdatePasswordRequest) error {
+	id, ok := ctx.Value(config.UserID).(string)
+	if !ok || id == "" {
+		return errors.New("unauthorized: user context missing")
+	}
+
+	user, err := s.userRepo.GetByID(ctx, id)
+	if err != nil {
+		return err
+	}
+
+	if err := bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(req.CurrentPassword)); err != nil {
+		return errors.New("current password is incorrect")
+	}
+
+	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(req.NewPassword), bcrypt.DefaultCost)
+	if err != nil {
+		return err
+	}
+
+	user.Password = string(hashedPassword)
+	user.ForcePasswordChange = false
+
+	return s.userRepo.Update(ctx, user)
 }

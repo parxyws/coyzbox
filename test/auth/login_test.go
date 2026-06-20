@@ -35,16 +35,16 @@ func TestLogin_Success(t *testing.T) {
 		IsVerified: true,
 	}, nil)
 
-	m.memberRepo.On("GetByUserID", ctx, "user-123").Return(&domain.TenantMember{
+	m.memberRepo.On("ListByUserID", ctx, "user-123").Return([]domain.TenantMember{{
 		Id:       "member-1",
 		TenantId: "tenant-1",
 		UserId:   "user-123",
 		Role:     domain.TenantRoleOwner,
-	}, nil)
+		Tenant:   domain.Tenant{Id: "tenant-1", Name: "Test Corp", Slug: "test-corp"},
+	}}, nil)
 
 	m.sessionStore.On("Set", ctx, mock.Anything, mock.Anything, 7*24*time.Hour).Return(nil)
 	m.userRepo.On("Update", ctx, mock.Anything).Return(nil)
-	m.tenantRepo.On("GetByID", ctx, "tenant-1").Return(&domain.Tenant{Id: "tenant-1", Name: "Test Corp", Slug: "test-corp"}, nil)
 
 	resp, err := svc.Login(ctx, req)
 	require.NoError(t, err)
@@ -104,7 +104,7 @@ func TestLogin_MemberNotFound(t *testing.T) {
 	m.userRepo.On("GetByEmail", ctx, req.Email).Return(&domain.User{
 		Id: "user-123", Email: req.Email, Password: correctHash, IsVerified: true,
 	}, nil)
-	m.memberRepo.On("GetByUserID", ctx, "user-123").Return(nil, domain.ErrNotFound)
+	m.memberRepo.On("ListByUserID", ctx, "user-123").Return([]domain.TenantMember(nil), domain.ErrNotFound)
 
 	resp, err := svc.Login(ctx, req)
 	assert.ErrorIs(t, err, domain.ErrNotFound)
@@ -121,9 +121,10 @@ func TestLogin_TokenGenerationFails(t *testing.T) {
 	m.userRepo.On("GetByEmail", ctx, req.Email).Return(&domain.User{
 		Id: "user-123", Email: req.Email, Password: correctHash, IsVerified: true,
 	}, nil)
-	m.memberRepo.On("GetByUserID", ctx, "user-123").Return(&domain.TenantMember{
+	m.memberRepo.On("ListByUserID", ctx, "user-123").Return([]domain.TenantMember{{
 		Id: "member-1", TenantId: "tenant-1", UserId: "user-123", Role: domain.TenantRoleOwner,
-	}, nil)
+		Tenant: domain.Tenant{Id: "tenant-1", Name: "Test Corp", Slug: "test-corp"},
+	}}, nil)
 
 	resp, err := svc.Login(ctx, req)
 	assert.Error(t, err)
@@ -139,35 +140,15 @@ func TestLogin_SessionStoreFails(t *testing.T) {
 	m.userRepo.On("GetByEmail", ctx, req.Email).Return(&domain.User{
 		Id: "user-123", Email: req.Email, Password: correctHash, IsVerified: true,
 	}, nil)
-	m.memberRepo.On("GetByUserID", ctx, "user-123").Return(&domain.TenantMember{
+	m.memberRepo.On("ListByUserID", ctx, "user-123").Return([]domain.TenantMember{{
 		Id: "member-1", TenantId: "tenant-1", UserId: "user-123", Role: domain.TenantRoleOwner,
-	}, nil)
+		Tenant: domain.Tenant{Id: "tenant-1", Name: "Test Corp", Slug: "test-corp"},
+	}}, nil)
 	m.sessionStore.On("Set", ctx, mock.Anything, mock.Anything, mock.Anything).Return(errors.New("redis error"))
 
 	resp, err := svc.Login(ctx, req)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "failed to store session")
-	assert.Nil(t, resp)
-}
-
-func TestLogin_TenantNotFound(t *testing.T) {
-	svc, m := newServiceWithMocks(t)
-	ctx := context.Background()
-
-	req := &auth.LoginRequest{Email: "test@example.com", Password: "correctpass"}
-
-	m.userRepo.On("GetByEmail", ctx, req.Email).Return(&domain.User{
-		Id: "user-123", Email: req.Email, Password: correctHash, IsVerified: true,
-	}, nil)
-	m.memberRepo.On("GetByUserID", ctx, "user-123").Return(&domain.TenantMember{
-		Id: "member-1", TenantId: "tenant-1", UserId: "user-123", Role: domain.TenantRoleOwner,
-	}, nil)
-	m.sessionStore.On("Set", ctx, mock.Anything, mock.Anything, mock.Anything).Return(nil)
-	m.userRepo.On("Update", ctx, mock.Anything).Return(nil)
-	m.tenantRepo.On("GetByID", ctx, "tenant-1").Return(nil, domain.ErrNotFound)
-
-	resp, err := svc.Login(ctx, req)
-	assert.Error(t, err)
 	assert.Nil(t, resp)
 }
 
@@ -180,9 +161,10 @@ func TestLogin_LastLoginUpdateFails(t *testing.T) {
 	m.userRepo.On("GetByEmail", ctx, req.Email).Return(&domain.User{
 		Id: "user-123", Email: req.Email, Password: correctHash, IsVerified: true,
 	}, nil)
-	m.memberRepo.On("GetByUserID", ctx, "user-123").Return(&domain.TenantMember{
+	m.memberRepo.On("ListByUserID", ctx, "user-123").Return([]domain.TenantMember{{
 		Id: "member-1", TenantId: "tenant-1", UserId: "user-123", Role: domain.TenantRoleOwner,
-	}, nil)
+		Tenant: domain.Tenant{Id: "tenant-1", Name: "Test Corp", Slug: "test-corp"},
+	}}, nil)
 	m.sessionStore.On("Set", ctx, mock.Anything, mock.Anything, mock.Anything).Return(nil)
 	m.userRepo.On("Update", ctx, mock.Anything).Return(errors.New("db error"))
 

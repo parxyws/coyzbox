@@ -5,7 +5,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"log"
+	"os"
 	"regexp"
 	"strings"
 	"sync"
@@ -13,67 +13,14 @@ import (
 
 	"github.com/oklog/ulid/v2"
 	"github.com/parxyws/cozybox/internal/domain"
-	"github.com/parxyws/cozybox/internal/pkg/jwtutil"
+	"github.com/parxyws/cozybox/internal/pkg/jwt"
 	"github.com/parxyws/cozybox/internal/pkg/mail"
 	"github.com/parxyws/cozybox/internal/pkg/randutil"
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
 )
 
-type UserRepository interface {
-	Insert(ctx context.Context, user *domain.User) error
-	Update(ctx context.Context, user *domain.User) error
-	GetByID(ctx context.Context, id string) (*domain.User, error)
-	GetByEmail(ctx context.Context, email string) (*domain.User, error)
-	GetByUsername(ctx context.Context, username string) (*domain.User, error)
-}
-
-type TenantRepository interface {
-	Insert(ctx context.Context, tenant *domain.Tenant) error
-	Update(ctx context.Context, tenant *domain.Tenant) error
-	GetByID(ctx context.Context, id string) (*domain.Tenant, error)
-	GetBySlug(ctx context.Context, slug string) (*domain.Tenant, error)
-}
-
-type TenantMemberRepository interface {
-	Insert(ctx context.Context, member *domain.TenantMember) error
-	GetByUserID(ctx context.Context, userID string) (*domain.TenantMember, error)
-}
-
-type OrganizationRepository interface {
-	Insert(ctx context.Context, org *domain.Organization) error
-}
-
-type SessionStore interface {
-	Set(ctx context.Context, key string, value string, expiration time.Duration) error
-	SetMultiple(ctx context.Context, pairs map[string]string, expiration time.Duration) error
-	Get(ctx context.Context, key string) (string, error)
-	Delete(ctx context.Context, keys ...string) error
-}
-
-type Mailer interface {
-	SendOTP(to string, data mail.OTPData) error
-	SendResetPassword(to string, data mail.ResetPasswordData) error
-}
-
-type FileStorage interface {
-	PutObject(ctx context.Context, input domain.UploadInput) (key string, err error)
-}
-
-// TransactionManager provides the ability to execute operations within a database transaction.
-type TransactionManager interface {
-	WithTransaction(ctx context.Context, fn func(tx *gorm.DB) error) error
-}
-
-// RepoFactory creates new repository instances scoped to a given transaction.
-// This allows the service to swap repos to transactional versions without
-// embedding WithTx in the repository interfaces.
-type RepoFactory interface {
-	UserRepo(tx *gorm.DB) UserRepository
-	TenantRepo(tx *gorm.DB) TenantRepository
-	MemberRepo(tx *gorm.DB) TenantMemberRepository
-	OrgRepo(tx *gorm.DB) OrganizationRepository
-}
+var slugRegex = regexp.MustCompile(`[^a-z0-9]+`)
 
 type Service struct {
 	userRepo       UserRepository
@@ -81,7 +28,7 @@ type Service struct {
 	memberRepo     TenantMemberRepository
 	orgRepo        OrganizationRepository
 	sessionStore   SessionStore
-	tokenGenerator jwtutil.TokenGenerator
+	tokenGenerator jwt.TokenGenerator
 	mailer         Mailer
 	fileStorage    FileStorage
 	txManager      TransactionManager
@@ -101,7 +48,7 @@ func NewAuthService(
 	memberRepo TenantMemberRepository,
 	orgRepo OrganizationRepository,
 	sessionStore SessionStore,
-	tokenGenerator jwtutil.TokenGenerator,
+	tokenGenerator jwt.TokenGenerator,
 	mailer Mailer,
 	fileStorage FileStorage,
 	txManager TransactionManager,
@@ -152,6 +99,7 @@ func (s *Service) Register(ctx context.Context, req *RegisterUserRequest) (*Regi
 		Name:      req.TenantName,
 		Slug:      slug,
 		Status:    domain.TenantStatusActive,
+		Type:      domain.WorkspacePersonal,
 		OwnerId:   user.Id,
 		CreatedAt: currentTime,
 		UpdatedAt: currentTime,
@@ -215,7 +163,7 @@ func (s *Service) Register(ctx context.Context, req *RegisterUserRequest) (*Regi
 	go func() {
 		defer s.wg.Done()
 		if err := s.mailer.SendOTP(req.Email, mail.OTPData{Name: req.Name, OTP: otp}); err != nil {
-			log.Printf("failed to send otp to %s: %v", req.Email, err)
+			fmt.Fprintf(os.Stderr, "failed to send otp to %s: %v\n", req.Email, err)
 		}
 	}()
 
@@ -272,10 +220,15 @@ func (s *Service) Login(ctx context.Context, req *LoginRequest) (*UserAuthentica
 		return nil, domain.ErrEmailNotVerified
 	}
 
-	member, err := s.memberRepo.GetByUserID(ctx, user.Id)
+	memberships, err := s.memberRepo.ListByUserID(ctx, user.Id)
 	if err != nil {
+		return nil, fmt.Errorf("failed to list memberships: %w", err)
+	}
+	if len(memberships) == 0 {
 		return nil, domain.ErrNotFound
 	}
+
+	member := memberFromList(memberships, "") // pick default (owner first, then oldest)
 
 	sessionId := ulid.Make().String()
 	accessToken, refreshToken, hashedToken, err := s.generateTokens(user.Id, member.TenantId, sessionId)
@@ -287,6 +240,10 @@ func (s *Service) Login(ctx context.Context, req *LoginRequest) (*UserAuthentica
 		SessionID:    sessionId,
 		UserID:       user.Id,
 		TenantID:     member.TenantId,
+		TenantName:   member.Tenant.Name,
+		TenantSlug:   member.Tenant.Slug,
+		TenantRole:   string(member.Role),
+		TenantType:   string(member.Tenant.Type),
 		RefreshToken: string(hashedToken),
 		ExpiresAt:    time.Now().Add(7 * 24 * time.Hour),
 	}
@@ -305,11 +262,6 @@ func (s *Service) Login(ctx context.Context, req *LoginRequest) (*UserAuthentica
 		return nil, fmt.Errorf("failed to update user: %w", err)
 	}
 
-	tenant, err := s.tenantRepo.GetByID(ctx, member.TenantId)
-	if err != nil {
-		return nil, err
-	}
-
 	return &UserAuthenticateResponse{
 		AccessToken:  accessToken,
 		RefreshToken: refreshToken,
@@ -322,12 +274,15 @@ func (s *Service) Login(ctx context.Context, req *LoginRequest) (*UserAuthentica
 			ForcePasswordChange: user.ForcePasswordChange,
 			OnboardingCompleted: user.OnboardingCompleted,
 		},
-		Tenant: TenantResponse{
-			Id:   tenant.Id,
-			Name: tenant.Name,
-			Slug: tenant.Slug,
+		Tenant: WorkspaceResponse{
+			Id:   member.Tenant.Id,
+			Name: member.Tenant.Name,
+			Slug: member.Tenant.Slug,
 			Role: string(member.Role),
+			Type: string(member.Tenant.Type),
 		},
+		ActiveWorkspace: member.Tenant.Id,
+		Workspaces:      s.listWorkspacesFromMembers(memberships),
 	}, nil
 }
 
@@ -342,13 +297,16 @@ func (s *Service) RefreshToken(ctx context.Context, req *RefreshTokenRequest) (*
 		return nil, fmt.Errorf("failed to unmarshal session: %w", err)
 	}
 
-	if err := bcrypt.CompareHashAndPassword([]byte(session.RefreshToken), []byte(req.RefreshToken)); err != nil {
-		return nil, domain.ErrUnauthorized
+	if time.Now().After(session.ExpiresAt) {
+		err := s.sessionStore.Delete(ctx, fmt.Sprintf("session:%s", req.SessionID))
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "refresh: failed to delete expired session %s: %v\n", req.SessionID, err)
+		}
+		return nil, domain.ErrSessionExpired
 	}
 
-	if time.Now().After(session.ExpiresAt) {
-		_ = s.sessionStore.Delete(ctx, fmt.Sprintf("session:%s", req.SessionID))
-		return nil, domain.ErrSessionExpired
+	if err := bcrypt.CompareHashAndPassword([]byte(session.RefreshToken), []byte(req.RefreshToken)); err != nil {
+		return nil, domain.ErrUnauthorized
 	}
 
 	user, err := s.userRepo.GetByID(ctx, session.UserID)
@@ -356,7 +314,9 @@ func (s *Service) RefreshToken(ctx context.Context, req *RefreshTokenRequest) (*
 		return nil, err
 	}
 
-	_ = s.sessionStore.Delete(ctx, fmt.Sprintf("session:%s", req.SessionID))
+	if err := s.sessionStore.Delete(ctx, fmt.Sprintf("session:%s", req.SessionID)); err != nil {
+		fmt.Fprintf(os.Stderr, "refresh: failed to delete old session %s: %v\n", req.SessionID, err)
+	}
 
 	newSessionID := ulid.Make().String()
 	newAccessToken, newRefreshToken, hashedToken, err := s.generateTokens(user.Id, session.TenantID, newSessionID)
@@ -368,6 +328,10 @@ func (s *Service) RefreshToken(ctx context.Context, req *RefreshTokenRequest) (*
 		SessionID:    newSessionID,
 		UserID:       user.Id,
 		TenantID:     session.TenantID,
+		TenantName:   session.TenantName,
+		TenantSlug:   session.TenantSlug,
+		TenantRole:   session.TenantRole,
+		TenantType:   session.TenantType,
 		RefreshToken: string(hashedToken),
 		ClientIP:     session.ClientIP,
 		UserAgent:    session.UserAgent,
@@ -395,8 +359,12 @@ func (s *Service) RefreshToken(ctx context.Context, req *RefreshTokenRequest) (*
 			ForcePasswordChange: user.ForcePasswordChange,
 			OnboardingCompleted: user.OnboardingCompleted,
 		},
-		Tenant: TenantResponse{
-			Id: session.TenantID,
+		Tenant: WorkspaceResponse{
+			Id:   session.TenantID,
+			Name: session.TenantName,
+			Slug: session.TenantSlug,
+			Role: session.TenantRole,
+			Type: session.TenantType,
 		},
 	}, nil
 }
@@ -485,7 +453,7 @@ func (s *Service) ForgotPassword(ctx context.Context, req *ForgotPasswordRequest
 		defer s.wg.Done()
 		url := fmt.Sprintf("%s/reset-password?ref=%s&token=%s", s.addr, referenceId, otp)
 		if err := s.mailer.SendResetPassword(req.Email, mail.ResetPasswordData{Name: req.Email, URL: url}); err != nil {
-			log.Printf("failed to send reset password: %v", err)
+			fmt.Fprintf(os.Stderr, "failed to send reset password: %v\n", err)
 		}
 	}()
 
@@ -498,7 +466,7 @@ func (s *Service) ResetPassword(ctx context.Context, req *ResetPasswordRequest) 
 		return err
 	}
 
-	parts := strings.SplitN(req.ReferenceId, "-", 2)
+	parts := strings.SplitN(trimmedRef, "-", 2)
 	if len(parts) < 2 {
 		return domain.ErrBadRequest
 	}
@@ -568,12 +536,82 @@ func (s *Service) generateTokens(userID, tenantID, sessionID string) (string, st
 
 func generateSlug(name string, id string) string {
 	slug := strings.ToLower(strings.TrimSpace(name))
-	re := regexp.MustCompile(`[^a-z0-9]+`)
-	slug = re.ReplaceAllString(slug, "-")
+	slug = slugRegex.ReplaceAllString(slug, "-")
 	slug = strings.Trim(slug, "-")
 	if slug == "" {
 		slug = "workspace"
 	}
 	suffix := strings.ToLower(id[:8])
 	return fmt.Sprintf("%s-%s", slug, suffix)
+}
+
+func (s *Service) ListWorkspaces(ctx context.Context, userID string) ([]WorkspaceResponse, error) {
+	members, err := s.memberRepo.ListByUserID(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+	return s.listWorkspacesFromMembers(members), nil
+}
+
+func (s *Service) SwitchWorkspace(ctx context.Context, userID, workspaceID, sessionID string) (*SwitchWorkspaceResponse, error) {
+	members, err := s.memberRepo.ListByUserID(ctx, userID)
+	if err != nil {
+		return nil, domain.ErrForbidden
+	}
+
+	var found *domain.TenantMember
+	for i := range members {
+		if members[i].TenantId == workspaceID {
+			found = &members[i]
+			break
+		}
+	}
+	if found == nil {
+		return nil, domain.ErrForbidden
+	}
+
+	accessToken, err := s.tokenGenerator.CreateAccessToken(userID, workspaceID, sessionID, 15*time.Minute)
+	if err != nil {
+		return nil, err
+	}
+
+	return &SwitchWorkspaceResponse{
+		AccessToken: accessToken,
+		Workspace: WorkspaceResponse{
+			Id:   found.Tenant.Id,
+			Name: found.Tenant.Name,
+			Slug: found.Tenant.Slug,
+			Role: string(found.Role),
+			Type: string(found.Tenant.Type),
+		},
+	}, nil
+}
+
+func memberFromList(members []domain.TenantMember, preferredID string) *domain.TenantMember {
+	if len(members) == 0 {
+		return nil
+	}
+	if preferredID != "" {
+		for i := range members {
+			if members[i].TenantId == preferredID {
+				return &members[i]
+			}
+		}
+	}
+	return &members[0]
+}
+
+func (s *Service) listWorkspacesFromMembers(members []domain.TenantMember) []WorkspaceResponse {
+	out := make([]WorkspaceResponse, 0, len(members))
+	for i := range members {
+		m := &members[i]
+		out = append(out, WorkspaceResponse{
+			Id:   m.Tenant.Id,
+			Name: m.Tenant.Name,
+			Slug: m.Tenant.Slug,
+			Role: string(m.Role),
+			Type: string(m.Tenant.Type),
+		})
+	}
+	return out
 }
