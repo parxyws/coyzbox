@@ -8,9 +8,9 @@ DROP INDEX IF EXISTS idx_tc_tenant;
 DROP TABLE IF EXISTS template_configs;
 
 -- DOCUMENT LAYER (leaf tables first)
-DROP INDEX IF EXISTS idx_ds_org;
-DROP INDEX IF EXISTS idx_ds_tenant;
-DROP TABLE IF EXISTS document_sequences;
+DROP TABLE IF EXISTS tenant_sequence_state;
+DROP INDEX IF EXISTS idx_tss_tenant;
+DROP TABLE IF EXISTS tenant_sequence_settings;
 
 DROP INDEX IF EXISTS idx_da_document;
 DROP TABLE IF EXISTS document_activities;
@@ -20,7 +20,8 @@ DROP TABLE IF EXISTS document_items;
 
 DROP INDEX IF EXISTS idx_docs_creator;
 DROP INDEX IF EXISTS idx_docs_ref;
-DROP INDEX IF EXISTS idx_docs_state;
+DROP INDEX IF EXISTS idx_docs_flow_status;
+DROP INDEX IF EXISTS idx_docs_status;
 DROP INDEX IF EXISTS idx_docs_type;
 DROP INDEX IF EXISTS idx_docs_parent;
 DROP INDEX IF EXISTS idx_docs_contact;

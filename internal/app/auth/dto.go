@@ -16,6 +16,9 @@ type VerifyEmailRequest struct {
 type LoginRequest struct {
 	Email    string `json:"email"    validate:"required,email"`
 	Password string `json:"password" validate:"required"`
+	// ClientIP and UserAgent are populated by the handler, not from the request body.
+	ClientIP  string `json:"-"`
+	UserAgent string `json:"-"`
 }
 
 type RefreshTokenRequest struct {
@@ -35,6 +38,7 @@ type ResetPasswordRequest struct {
 }
 
 type OnboardingRequest struct {
+	TenantName      string `json:"tenant_name" validate:"required,min=2,max=100"`
 	Email           string `json:"email" validate:"email"`
 	Phone           string `json:"phone" validate:"number"`
 	AddressLine1    string `json:"address_line_1"`
@@ -44,6 +48,8 @@ type OnboardingRequest struct {
 	PostalCode      string `json:"postal_code"`
 	Country         string `json:"country"`
 	TaxId           string `json:"tax_number"`
+	Website         string `json:"website"`
+	Timezone        string `json:"timezone"`
 	LogoS3URL       string `json:"logo_s3_url"`
 	DefaultCurrency string `json:"default_currency"`
 }

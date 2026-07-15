@@ -245,6 +245,8 @@ func (s *Service) Login(ctx context.Context, req *LoginRequest) (*UserAuthentica
 		TenantRole:   string(member.Role),
 		TenantType:   string(member.Tenant.Type),
 		RefreshToken: string(hashedToken),
+		ClientIP:     req.ClientIP,
+		UserAgent:    req.UserAgent,
 		ExpiresAt:    time.Now().Add(7 * 24 * time.Hour),
 	}
 
@@ -397,19 +399,22 @@ func (s *Service) CompleteOnboarding(ctx context.Context, userID string, tenantI
 	}
 
 	org := &domain.Organization{
-		Id:           ulid.Make().String(),
-		TenantId:     tenantID,
-		Name:         tenant.Name,
-		Email:        req.Email,
-		Phone:        req.Phone,
-		AddressLine1: req.AddressLine1,
-		AddressLine2: req.AddressLine2,
-		City:         req.City,
-		State:        req.State,
-		PostalCode:   req.PostalCode,
-		Country:      req.Country,
-		TaxId:        req.TaxId,
-		LogoS3Key:    logoS3Key,
+		Id:              ulid.Make().String(),
+		TenantId:        tenantID,
+		Name:            tenant.Name,
+		Email:           req.Email,
+		Phone:           req.Phone,
+		AddressLine1:    req.AddressLine1,
+		AddressLine2:    req.AddressLine2,
+		City:            req.City,
+		State:           req.State,
+		PostalCode:      req.PostalCode,
+		Country:         req.Country,
+		Website:         req.Website,
+		Timezone:        req.Timezone,
+		DefaultCurrency: req.DefaultCurrency,
+		TaxId:           req.TaxId,
+		LogoS3Key:       logoS3Key,
 	}
 
 	// Wrap Organization insert + User update in a transaction for atomicity.
@@ -568,6 +573,41 @@ func (s *Service) SwitchWorkspace(ctx context.Context, userID, workspaceID, sess
 	}
 	if found == nil {
 		return nil, domain.ErrForbidden
+	}
+
+	// Fetch the current session from Redis so we can update it with the new
+	// tenant context. Without this, session.TenantID and the JWT's TenantID
+	// diverge — any future check comparing the two would fail.
+	sessionJSON, err := s.sessionStore.Get(ctx, fmt.Sprintf("session:%s", sessionID))
+	if err != nil {
+		return nil, domain.ErrSessionExpired
+	}
+
+	var session domain.UserSession
+	if err := json.Unmarshal([]byte(sessionJSON), &session); err != nil {
+		return nil, fmt.Errorf("switch workspace: invalid session data: %w", err)
+	}
+
+	// Update the session fields to reflect the new active workspace.
+	session.TenantID = found.Tenant.Id
+	session.TenantName = found.Tenant.Name
+	session.TenantSlug = found.Tenant.Slug
+	session.TenantRole = string(found.Role)
+	session.TenantType = string(found.Tenant.Type)
+
+	updatedJSON, err := json.Marshal(session)
+	if err != nil {
+		return nil, fmt.Errorf("switch workspace: failed to marshal session: %w", err)
+	}
+
+	// Preserve the original TTL by using the session's ExpiresAt.
+	remaining := time.Until(session.ExpiresAt)
+	if remaining <= 0 {
+		return nil, domain.ErrSessionExpired
+	}
+
+	if err := s.sessionStore.Set(ctx, fmt.Sprintf("session:%s", sessionID), string(updatedJSON), remaining); err != nil {
+		return nil, fmt.Errorf("switch workspace: failed to update session: %w", err)
 	}
 
 	accessToken, err := s.tokenGenerator.CreateAccessToken(userID, workspaceID, sessionID, 15*time.Minute)

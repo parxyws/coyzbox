@@ -25,3 +25,30 @@ func GetContextWithTimeout(c *gin.Context, timeout time.Duration) (context.Conte
 	ctx = context.WithValue(ctx, config.RequestID, reqID)
 	return ctx, cancel
 }
+
+// UserIDFromContext extracts the authenticated user's ID from the context.
+// Returns the ID and true on success; empty string and false if missing.
+func UserIDFromContext(ctx context.Context) (string, bool) {
+	id, ok := ctx.Value(config.UserID).(string)
+	return id, ok && id != ""
+}
+
+// TenantIDFromContext extracts the active tenant ID from the context.
+// Returns the ID and true on success; empty string and false if missing.
+func TenantIDFromContext(ctx context.Context) (string, bool) {
+	id, ok := ctx.Value(config.TenantID).(string)
+	return id, ok && id != ""
+}
+
+// SessionIDFromContext extracts the session ID from the context.
+// Returns the ID and true on success; empty string and false if missing.
+func SessionIDFromContext(ctx context.Context) (string, bool) {
+	id, ok := ctx.Value(config.SessionID).(string)
+	return id, ok && id != ""
+}
+
+// RequestIDFromContext extracts the request trace ID from the context.
+func RequestIDFromContext(ctx context.Context) string {
+	id, _ := ctx.Value(config.RequestID).(string)
+	return id
+}

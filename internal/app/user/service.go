@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 
-	"github.com/parxyws/cozybox/internal/config"
+	"github.com/parxyws/cozybox/internal/pkg/helper"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -17,8 +17,8 @@ func NewUserService(userRepo UserRepository) *Service {
 }
 
 func (s *Service) GetProfile(ctx context.Context) (*UserProfileResponse, error) {
-	id, ok := ctx.Value(config.UserID).(string)
-	if !ok || id == "" {
+	id, ok := helper.UserIDFromContext(ctx)
+	if !ok {
 		return nil, errors.New("unauthorized: user context missing")
 	}
 
@@ -39,8 +39,8 @@ func (s *Service) GetProfile(ctx context.Context) (*UserProfileResponse, error) 
 }
 
 func (s *Service) UpdateProfile(ctx context.Context, req *UpdateProfileRequest) (*UserProfileResponse, error) {
-	id, ok := ctx.Value(config.UserID).(string)
-	if !ok || id == "" {
+	id, ok := helper.UserIDFromContext(ctx)
+	if !ok {
 		return nil, errors.New("unauthorized: user context missing")
 	}
 
@@ -76,8 +76,8 @@ func (s *Service) UpdateProfile(ctx context.Context, req *UpdateProfileRequest) 
 }
 
 func (s *Service) UpdatePassword(ctx context.Context, req *UpdatePasswordRequest) error {
-	id, ok := ctx.Value(config.UserID).(string)
-	if !ok || id == "" {
+	id, ok := helper.UserIDFromContext(ctx)
+	if !ok {
 		return errors.New("unauthorized: user context missing")
 	}
 

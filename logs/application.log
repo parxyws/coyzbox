@@ -3,3 +3,5 @@ time="2026-06-08 00:38:22" level=fatal msg="failed to start server: invalid key 
 time="2026-06-08 00:44:24" level=fatal msg="failed to start server: invalid key size: must be at least 32 characters" file="main.go:97"
 time="2026-06-19 18:25:25" level=info msg="received signal interrupt, shutting down server..." file="server.go:104"
 time="2026-06-19 18:25:25" level=info msg="server shutdown gracefully" file="server.go:118"
+time="2026-06-23 14:07:07" level=info msg="received signal interrupt, shutting down server..." file="server.go:104"
+time="2026-06-23 14:07:07" level=info msg="server shutdown gracefully" file="server.go:118"

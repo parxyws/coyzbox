@@ -167,6 +167,10 @@ func (a *AuthHandler) Login(c *gin.Context) {
 		return
 	}
 
+	// Populate transport metadata — not part of the JSON body.
+	req.ClientIP = c.ClientIP()
+	req.UserAgent = c.Request.UserAgent()
+
 	result, err := a.service.Login(ctx, &req)
 	if err != nil {
 		helper.Error(c, http.StatusUnauthorized, "Login failed", err)

@@ -154,7 +154,7 @@ CREATE TABLE documents
 
     -- Classification
     type            VARCHAR(30)     NOT NULL,
-    state           VARCHAR(30)     NOT NULL DEFAULT 'draft',
+    status          VARCHAR(30)     NOT NULL DEFAULT 'draft',
     flow_status     VARCHAR(30),
     document_ref    VARCHAR(100)    NOT NULL DEFAULT '',
 
@@ -195,7 +195,8 @@ CREATE TABLE documents
     CONSTRAINT fk_doc_parent FOREIGN KEY (parent_id) REFERENCES documents (id),
     CONSTRAINT fk_doc_creator FOREIGN KEY (created_by) REFERENCES users (id),
     CONSTRAINT ck_doc_type CHECK (type IN ('quotation', 'invoice', 'receipt', 'purchase_order', 'sales_order', 'debit_note')),
-    CONSTRAINT ck_doc_state CHECK (state IN ('draft', 'published', 'cancelled', 'expired'))
+    CONSTRAINT ck_doc_status CHECK (status IN ('draft', 'published', 'cancelled', 'expired')),
+    CONSTRAINT ck_doc_flow_status CHECK (flow_status IS NULL OR flow_status IN ('accepted', 'rejected', 'overdue', 'paid', 'partially_paid'))
 );
 
 CREATE INDEX idx_docs_tenant ON documents (tenant_id) WHERE deleted_at IS NULL;
@@ -203,7 +204,8 @@ CREATE INDEX idx_docs_org ON documents (organization_id) WHERE deleted_at IS NUL
 CREATE INDEX idx_docs_contact ON documents (contact_id) WHERE deleted_at IS NULL;
 CREATE INDEX idx_docs_parent ON documents (parent_id) WHERE deleted_at IS NULL;
 CREATE INDEX idx_docs_type ON documents (type) WHERE deleted_at IS NULL;
-CREATE INDEX idx_docs_state ON documents (state) WHERE deleted_at IS NULL;
+CREATE INDEX idx_docs_status ON documents (status) WHERE deleted_at IS NULL;
+CREATE INDEX idx_docs_flow_status ON documents (flow_status) WHERE deleted_at IS NULL;
 CREATE INDEX idx_docs_ref ON documents (document_ref) WHERE deleted_at IS NULL;
 CREATE INDEX idx_docs_creator ON documents (created_by) WHERE deleted_at IS NULL;
 
@@ -253,28 +255,41 @@ CREATE INDEX idx_da_document ON document_activities (document_id);
 
 -- -----------------------------------------------------------------------------
 
-CREATE TABLE document_sequences
+CREATE TABLE tenant_sequence_settings
 (
-    id              VARCHAR(26)  NOT NULL,
-    tenant_id       VARCHAR(26)  NOT NULL,
-    organization_id VARCHAR(26)  NOT NULL,
-    type            VARCHAR(30)  NOT NULL,
-    prefix          VARCHAR(20)  NOT NULL DEFAULT '',
-    next_number     INTEGER      NOT NULL DEFAULT 1,
-    format          VARCHAR(100) NOT NULL DEFAULT '{PREFIX}-{YEAR}-{SEQ:4}',
-    last_reset_at   TIMESTAMPTZ,
-    created_at      TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
-    updated_at      TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+    id               VARCHAR(26)  NOT NULL,
+    tenant_id        VARCHAR(26)  NOT NULL,
+    document_type    VARCHAR(30)  NOT NULL,
+    pattern_template VARCHAR(64)  NOT NULL, -- e.g. "INV-{{YYYY}}-{{MM}}-{{SEQ:4}}"
+    reset_cycle      VARCHAR(20)  NOT NULL, -- 'monthly', 'yearly', 'never'
+    created_at       TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+    updated_at       TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
 
-    CONSTRAINT pk_document_sequences PRIMARY KEY (id),
-    CONSTRAINT fk_ds_tenant FOREIGN KEY (tenant_id) REFERENCES tenants (id),
-    CONSTRAINT fk_ds_org FOREIGN KEY (organization_id) REFERENCES organizations (id),
-    CONSTRAINT ck_ds_type CHECK (type IN ('quotation', 'invoice', 'receipt', 'purchase_order', 'sales_order', 'debit_note')),
-    CONSTRAINT uq_ds_org_type UNIQUE (organization_id, type)
+    CONSTRAINT pk_tenant_sequence_settings PRIMARY KEY (id),
+    CONSTRAINT fk_tss_tenant FOREIGN KEY (tenant_id) REFERENCES tenants (id) ON DELETE CASCADE,
+    CONSTRAINT uq_tss_tenant_type UNIQUE (tenant_id, document_type),
+    CONSTRAINT ck_tss_document_type CHECK (document_type IN (
+        'quotation', 'invoice', 'receipt', 'purchase_order', 'sales_order', 'debit_note'
+    )),
+    CONSTRAINT ck_tss_reset_cycle CHECK (reset_cycle IN ('monthly', 'yearly', 'never'))
 );
 
-CREATE INDEX idx_ds_tenant ON document_sequences (tenant_id);
-CREATE INDEX idx_ds_org ON document_sequences (organization_id);
+CREATE INDEX idx_tss_tenant ON tenant_sequence_settings (tenant_id);
+
+CREATE TABLE tenant_sequence_state
+(
+    tenant_id      VARCHAR(26)  NOT NULL,
+    document_type  VARCHAR(30)  NOT NULL,
+    current_period VARCHAR(7)   NOT NULL,
+    last_value     INT          NOT NULL DEFAULT 0,
+    updated_at     TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+
+    CONSTRAINT pk_tenant_sequence_state PRIMARY KEY (tenant_id, document_type, current_period),
+    CONSTRAINT fk_tst_tenant FOREIGN KEY (tenant_id) REFERENCES tenants (id) ON DELETE CASCADE,
+    CONSTRAINT ck_tst_document_type CHECK (document_type IN (
+        'quotation', 'invoice', 'receipt', 'purchase_order', 'sales_order', 'debit_note'
+    ))
+);
 
 -- =============================================================================
 -- TEMPLATE LAYER

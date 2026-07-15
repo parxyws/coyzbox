@@ -6,11 +6,18 @@ import (
 	"time"
 )
 
+type TemplateStatus string
+
+const (
+	TemplateStatusDraft     TemplateStatus = "draft"
+	TemplateStatusPublished TemplateStatus = "published"
+)
+
 type TemplateConfig struct {
 	Id       string          `json:"id" gorm:"column:id;primaryKey"`
 	TenantId string          `json:"tenant_id" gorm:"column:tenant_id;index"`
 	BaseType DocumentType    `json:"base_type" gorm:"column:base_type"`
-	Status   string          `json:"status" gorm:"column:status;default:draft"`
+	Status   TemplateStatus  `json:"status" gorm:"column:status;default:draft"`
 	Name     string          `json:"name" gorm:"column:name"`
 	Config   json.RawMessage `json:"config" gorm:"column:config;type:jsonb;default:'{}'"`
 
