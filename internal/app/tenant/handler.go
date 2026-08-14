@@ -1,31 +1,25 @@
 package tenant
 
 import (
-	"context"
+	"errors"
+	"io"
 	"net/http"
 	"strings"
 
 	"github.com/gin-gonic/gin"
-	"github.com/parxyws/cozybox/internal/config"
 	"github.com/parxyws/cozybox/internal/domain"
 	"github.com/parxyws/cozybox/internal/pkg/helper"
 	"github.com/parxyws/cozybox/internal/pkg/validator"
 )
 
-// TenantService is the consuming-side interface for tenant operations.
-type TenantService interface {
-	GetOrganization(ctx context.Context, tenantID string) (*OrganizationResponse, error)
-	UpdateOrganization(ctx context.Context, tenantID string, req *UpdateOrganizationRequest, logo *domain.UploadInput) (*OrganizationResponse, error)
-	ListTemplateConfigs(ctx context.Context, tenantID string) ([]TemplateConfigResponse, error)
-	UpdateTemplateConfig(ctx context.Context, tenantID, configID string, req *UpdateTemplateConfigRequest) (*TemplateConfigResponse, error)
-}
-
 type Handler struct {
-	service TenantService
+	tenantService TenantService
 }
 
-func NewHandler(service TenantService) *Handler {
-	return &Handler{service: service}
+func NewHandler(tenantService TenantService) *Handler {
+	return &Handler{
+		tenantService: tenantService,
+	}
 }
 
 func (h *Handler) RegisterRoutes(route *gin.RouterGroup) {
@@ -42,28 +36,32 @@ func (h *Handler) GetOrganization(c *gin.Context) {
 	ctx, cancel := helper.GetContext(c)
 	defer cancel()
 
-	tenantID, exists := c.Get(string(config.TenantID))
-	if !exists {
-		helper.Error(c, http.StatusUnauthorized, "Unauthorized", nil)
+	tenantID, ok := helper.TenantIDFromContext(ctx)
+	if !ok {
+		helper.Error(c, http.StatusUnauthorized, "Unauthorized: tenant context missing", nil)
 		return
 	}
 
-	result, err := h.service.GetOrganization(ctx, tenantID.(string))
+	resp, err := h.tenantService.GetOrganization(ctx, tenantID)
 	if err != nil {
+		if errors.Is(err, domain.ErrNotFound) {
+			helper.Error(c, http.StatusNotFound, "Organization profile not found", err)
+			return
+		}
 		helper.Error(c, http.StatusInternalServerError, "Failed to get organization", err)
 		return
 	}
 
-	helper.Success(c, http.StatusOK, "Organization retrieved successfully", result)
+	helper.Success(c, http.StatusOK, "Organization retrieved successfully", resp)
 }
 
 func (h *Handler) UpdateOrganization(c *gin.Context) {
 	ctx, cancel := helper.GetContext(c)
 	defer cancel()
 
-	tenantID, exists := c.Get(string(config.TenantID))
-	if !exists {
-		helper.Error(c, http.StatusUnauthorized, "Unauthorized", nil)
+	tenantID, ok := helper.TenantIDFromContext(ctx)
+	if !ok {
+		helper.Error(c, http.StatusUnauthorized, "Unauthorized: tenant context missing", nil)
 		return
 	}
 
@@ -74,46 +72,52 @@ func (h *Handler) UpdateOrganization(c *gin.Context) {
 	}
 
 	if err := validator.Validate.StructCtx(ctx, req); err != nil {
-		helper.Error(c, http.StatusBadRequest, "Invalid request body", err)
+		helper.Error(c, http.StatusBadRequest, "Validation failed", err)
 		return
 	}
 
-	var logo *domain.UploadInput
+	var logoBytes []byte
+	var logoFilename string
+	var contentType string
 	file, header, err := c.Request.FormFile("logo")
 	if err == nil {
 		defer file.Close()
-		if !strings.HasPrefix(header.Header.Get("Content-Type"), "image/") {
+		contentType = header.Header.Get("Content-Type")
+		if !strings.HasPrefix(contentType, "image/") {
 			helper.Error(c, http.StatusBadRequest, "Logo must be an image file", nil)
 			return
 		}
-		logo = &domain.UploadInput{
-			Object:      file,
-			ObjectName:  header.Filename,
-			ObjectSize:  header.Size,
-			ContentType: header.Header.Get("Content-Type"),
+		b, readErr := io.ReadAll(file)
+		if readErr == nil {
+			logoBytes = b
+			logoFilename = header.Filename
 		}
 	}
 
-	result, err := h.service.UpdateOrganization(ctx, tenantID.(string), &req, logo)
+	resp, err := h.tenantService.UpdateOrganization(ctx, tenantID, req, logoBytes, logoFilename, contentType)
 	if err != nil {
+		if errors.Is(err, domain.ErrNotFound) {
+			helper.Error(c, http.StatusNotFound, "Organization profile not found", err)
+			return
+		}
 		helper.Error(c, http.StatusInternalServerError, "Failed to update organization", err)
 		return
 	}
 
-	helper.Success(c, http.StatusOK, "Organization updated successfully", result)
+	helper.Success(c, http.StatusOK, "Organization updated successfully", resp)
 }
 
 func (h *Handler) ListTemplateConfigs(c *gin.Context) {
 	ctx, cancel := helper.GetContext(c)
 	defer cancel()
 
-	tenantID, exists := c.Get(string(config.TenantID))
-	if !exists {
-		helper.Error(c, http.StatusUnauthorized, "Unauthorized", nil)
+	tenantID, ok := helper.TenantIDFromContext(ctx)
+	if !ok {
+		helper.Error(c, http.StatusUnauthorized, "Unauthorized: tenant context missing", nil)
 		return
 	}
 
-	result, err := h.service.ListTemplateConfigs(ctx, tenantID.(string))
+	result, err := h.tenantService.ListTemplateConfigs(ctx, tenantID)
 	if err != nil {
 		helper.Error(c, http.StatusInternalServerError, "Failed to list template configs", err)
 		return
@@ -126,9 +130,9 @@ func (h *Handler) UpdateTemplateConfig(c *gin.Context) {
 	ctx, cancel := helper.GetContext(c)
 	defer cancel()
 
-	tenantID, exists := c.Get(string(config.TenantID))
-	if !exists {
-		helper.Error(c, http.StatusUnauthorized, "Unauthorized", nil)
+	tenantID, ok := helper.TenantIDFromContext(ctx)
+	if !ok {
+		helper.Error(c, http.StatusUnauthorized, "Unauthorized: tenant context missing", nil)
 		return
 	}
 
@@ -145,15 +149,23 @@ func (h *Handler) UpdateTemplateConfig(c *gin.Context) {
 	}
 
 	if err := validator.Validate.StructCtx(ctx, req); err != nil {
-		helper.Error(c, http.StatusBadRequest, "Invalid request body", err)
+		helper.Error(c, http.StatusBadRequest, "Validation failed", err)
 		return
 	}
 
-	result, err := h.service.UpdateTemplateConfig(ctx, tenantID.(string), configID, &req)
+	resp, err := h.tenantService.UpdateTemplateConfig(ctx, tenantID, configID, req)
 	if err != nil {
+		if errors.Is(err, domain.ErrNotFound) {
+			helper.Error(c, http.StatusNotFound, "Template config not found", err)
+			return
+		}
+		if errors.Is(err, domain.ErrUnauthorized) {
+			helper.Error(c, http.StatusForbidden, "Forbidden: template config belongs to another tenant", err)
+			return
+		}
 		helper.Error(c, http.StatusInternalServerError, "Failed to update template config", err)
 		return
 	}
 
-	helper.Success(c, http.StatusOK, "Template config updated successfully", result)
+	helper.Success(c, http.StatusOK, "Template config updated successfully", resp)
 }

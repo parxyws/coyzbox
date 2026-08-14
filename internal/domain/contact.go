@@ -5,19 +5,18 @@ import (
 	"time"
 )
 
-type ContactType string
+type ContactRole string
 
 const (
-	ContactTypeClient   ContactType = "client"
-	ContactTypeSupplier ContactType = "supplier"
-	ContactTypeDual     ContactType = "dual"
+	ContactRoleClient   ContactRole = "client"
+	ContactRoleSupplier ContactRole = "supplier"
 )
 
 type Contact struct {
 	Id             string       `json:"id" gorm:"column:id;primaryKey"`
 	TenantId       string       `json:"tenant_id" gorm:"column:tenant_id;index"`
 	OrganizationId string       `json:"organization_id" gorm:"column:organization_id"`
-	Type           ContactType  `json:"type" gorm:"column:type"`
+	Roles          []string     `json:"roles" gorm:"column:roles;serializer:json"`
 	Name           string       `json:"name" gorm:"column:name"`
 	Email          string       `json:"email" gorm:"column:email"`
 	Phone          string       `json:"phone" gorm:"column:phone"`
@@ -38,4 +37,21 @@ type Contact struct {
 
 func (c Contact) TableName() string {
 	return "contacts"
+}
+
+func (c Contact) HasRole(role string) bool {
+	for _, r := range c.Roles {
+		if r == role {
+			return true
+		}
+	}
+	return false
+}
+
+func (c Contact) IsClient() bool {
+	return c.HasRole(string(ContactRoleClient))
+}
+
+func (c Contact) IsSupplier() bool {
+	return c.HasRole(string(ContactRoleSupplier))
 }

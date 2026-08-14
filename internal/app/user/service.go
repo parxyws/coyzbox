@@ -3,100 +3,96 @@ package user
 import (
 	"context"
 	"errors"
+	"fmt"
+	"time"
 
-	"github.com/parxyws/cozybox/internal/pkg/helper"
+	"github.com/parxyws/cozybox/internal/domain"
+	"github.com/parxyws/cozybox/internal/store"
 	"golang.org/x/crypto/bcrypt"
 )
 
-type Service struct {
-	userRepo UserRepository
+type UserService interface {
+	GetProfile(ctx context.Context, userID string) (*UserProfileResponse, error)
+	UpdateProfile(ctx context.Context, userID string, req UpdateProfileRequest) (*UserProfileResponse, error)
+	UpdatePassword(ctx context.Context, userID string, req UpdatePasswordRequest) error
 }
 
-func NewUserService(userRepo UserRepository) *Service {
-	return &Service{userRepo: userRepo}
+type userService struct {
+	userStore store.UserStore
 }
 
-func (s *Service) GetProfile(ctx context.Context) (*UserProfileResponse, error) {
-	id, ok := helper.UserIDFromContext(ctx)
-	if !ok {
-		return nil, errors.New("unauthorized: user context missing")
-	}
+func NewUserService(userStore store.UserStore) UserService {
+	return &userService{userStore: userStore}
+}
 
-	user, err := s.userRepo.GetByID(ctx, id)
+func (s *userService) GetProfile(ctx context.Context, userID string) (*UserProfileResponse, error) {
+	u, err := s.userStore.GetUserByID(ctx, userID)
 	if err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			return nil, domain.ErrNotFound
+		}
 		return nil, err
 	}
-
-	return &UserProfileResponse{
-		Id:                  user.Id,
-		Name:                user.Name,
-		Username:            user.Username,
-		Email:               user.Email,
-		IsVerified:          user.IsVerified,
-		ForcePasswordChange: user.ForcePasswordChange,
-		OnboardingCompleted: user.OnboardingCompleted,
-	}, nil
+	return mapUserToResponse(u), nil
 }
 
-func (s *Service) UpdateProfile(ctx context.Context, req *UpdateProfileRequest) (*UserProfileResponse, error) {
-	id, ok := helper.UserIDFromContext(ctx)
-	if !ok {
-		return nil, errors.New("unauthorized: user context missing")
-	}
-
-	user, err := s.userRepo.GetByID(ctx, id)
+func (s *userService) UpdateProfile(ctx context.Context, userID string, req UpdateProfileRequest) (*UserProfileResponse, error) {
+	u, err := s.userStore.GetUserByID(ctx, userID)
 	if err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			return nil, domain.ErrNotFound
+		}
 		return nil, err
-	}
-
-	if req.Name == "" && req.Username == "" {
-		return s.GetProfile(ctx)
 	}
 
 	if req.Name != "" {
-		user.Name = req.Name
+		u.Name = req.Name
 	}
 	if req.Username != "" {
-		user.Username = req.Username
+		u.Username = req.Username
 	}
+	u.UpdatedAt = time.Now()
 
-	if err := s.userRepo.Update(ctx, user); err != nil {
+	if err := s.userStore.UpdateUser(ctx, u); err != nil {
 		return nil, err
 	}
 
-	return &UserProfileResponse{
-		Id:                  user.Id,
-		Name:                user.Name,
-		Username:            user.Username,
-		Email:               user.Email,
-		IsVerified:          user.IsVerified,
-		ForcePasswordChange: user.ForcePasswordChange,
-		OnboardingCompleted: user.OnboardingCompleted,
-	}, nil
+	return mapUserToResponse(u), nil
 }
 
-func (s *Service) UpdatePassword(ctx context.Context, req *UpdatePasswordRequest) error {
-	id, ok := helper.UserIDFromContext(ctx)
-	if !ok {
-		return errors.New("unauthorized: user context missing")
-	}
-
-	user, err := s.userRepo.GetByID(ctx, id)
+func (s *userService) UpdatePassword(ctx context.Context, userID string, req UpdatePasswordRequest) error {
+	u, err := s.userStore.GetUserByID(ctx, userID)
 	if err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			return domain.ErrNotFound
+		}
 		return err
 	}
 
-	if err := bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(req.CurrentPassword)); err != nil {
-		return errors.New("current password is incorrect")
+	if err := bcrypt.CompareHashAndPassword([]byte(u.Password), []byte(req.CurrentPassword)); err != nil {
+		return domain.ErrInvalidCredential
 	}
 
 	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(req.NewPassword), bcrypt.DefaultCost)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to hash password: %w", err)
 	}
 
-	user.Password = string(hashedPassword)
-	user.ForcePasswordChange = false
+	u.Password = string(hashedPassword)
+	u.ForcePasswordChange = false
+	u.UpdatedAt = time.Now()
 
-	return s.userRepo.Update(ctx, user)
+	return s.userStore.UpdateUser(ctx, u)
+}
+
+func mapUserToResponse(user *domain.User) *UserProfileResponse {
+	return &UserProfileResponse{
+		Id:                  user.Id,
+		Name:                user.Name,
+		Username:            user.Username,
+		Email:               user.Email,
+		IsVerified:          user.IsVerified,
+		ForcePasswordChange: user.ForcePasswordChange,
+		OnboardingCompleted: user.OnboardingCompleted,
+	}
 }

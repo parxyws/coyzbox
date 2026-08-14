@@ -21,6 +21,16 @@ packages:
       filename: "mock_{{.InterfaceName | snakecase}}.go"
     interfaces:
       UserRepository:
-      TenantRepository:
-      TenantMemberRepository:
+  github.com/parxyws/cozybox/internal/app/contact:
+    config:
+      dir: internal/app/contact/mocks
+      filename: "mock_{{.InterfaceName | snakecase}}.go"
+    interfaces:
+      ContactRepository:
+      Service:
+  github.com/parxyws/cozybox/internal/app/tenant:
+    config:
+      dir: internal/app/tenant/mocks
+      filename: "mock_{{.InterfaceName | snakecase}}.go"
+    interfaces:
       OrganizationRepository:

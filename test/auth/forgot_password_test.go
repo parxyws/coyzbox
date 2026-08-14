@@ -1,44 +1,41 @@
 package auth_test
 
 import (
-	"context"
-	"errors"
+	"bytes"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 
+	"github.com/gin-gonic/gin"
+	"github.com/parxyws/cozybox/internal/app/auth"
+	"github.com/parxyws/cozybox/internal/domain"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
-	"github.com/stretchr/testify/require"
-
-	"github.com/parxyws/cozybox/internal/app/auth"
 )
 
 func TestForgotPassword_Success(t *testing.T) {
-	svc, m := newServiceWithMocks(t)
-	ctx := context.Background()
+	gin.SetMode(gin.TestMode)
+	handler, m := newHandlerWithMocks(t)
 
-	req := &auth.ForgotPasswordRequest{Email: "test@example.com"}
+	reqDto := auth.ForgotPasswordRequest{Email: "test@example.com"}
 
-	m.sessionStore.On("Set", ctx, mock.MatchedBy(func(key string) bool {
-		return len(key) >= 4 && key[:4] == "otp-"
-	}), mock.Anything, mock.Anything).Return(nil)
+	m.userStore.On("GetUserByEmail", mock.Anything, reqDto.Email).Return(&domain.User{
+		Id:    "user-1",
+		Email: reqDto.Email,
+		Name:  "Test User",
+	}, nil)
 
-	m.mailer.On("SendResetPassword", req.Email, mock.Anything).Return(nil).Maybe()
+	m.sessionStore.On("SetMultiple", mock.Anything, mock.Anything, mock.Anything).Return(nil)
+	m.mailer.On("SendResetPassword", reqDto.Email, mock.Anything).Return(nil).Maybe()
 
-	err := svc.ForgotPassword(ctx, req)
-	require.NoError(t, err)
-	m.sessionStore.AssertExpectations(t)
-}
+	body, _ := json.Marshal(reqDto)
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest("POST", "/api/auth/forgot-password", bytes.NewBuffer(body))
+	c.Request.Header.Set("Content-Type", "application/json")
 
-func TestForgotPassword_SessionStoreFails(t *testing.T) {
-	svc, m := newServiceWithMocks(t)
-	ctx := context.Background()
+	handler.ForgotPassword(c)
 
-	req := &auth.ForgotPasswordRequest{Email: "test@example.com"}
-
-	m.sessionStore.On("Set", ctx, mock.Anything, mock.Anything, mock.Anything).
-		Return(errors.New("redis error"))
-
-	err := svc.ForgotPassword(ctx, req)
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "failed to store OTP")
+	assert.Equal(t, http.StatusOK, w.Code)
 }

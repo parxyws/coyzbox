@@ -55,6 +55,26 @@ func (_mock *MockOrganizationRepository) Insert(ctx context.Context, org *domain
 	return r0
 }
 
+func (_mock *MockOrganizationRepository) GetByTenantID(ctx context.Context, tenantID string) (*domain.Organization, error) {
+	ret := _mock.Called(ctx, tenantID)
+	if len(ret) == 0 {
+		return nil, nil
+	}
+	var r0 *domain.Organization
+	if ret.Get(0) != nil {
+		r0 = ret.Get(0).(*domain.Organization)
+	}
+	return r0, ret.Error(1)
+}
+
+func (_mock *MockOrganizationRepository) Update(ctx context.Context, org *domain.Organization) error {
+	ret := _mock.Called(ctx, org)
+	if len(ret) == 0 {
+		return nil
+	}
+	return ret.Error(0)
+}
+
 // MockOrganizationRepository_Insert_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'Insert'
 type MockOrganizationRepository_Insert_Call struct {
 	*mock.Call

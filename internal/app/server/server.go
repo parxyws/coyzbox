@@ -40,7 +40,7 @@ type Server struct {
 	limiterRedis *redis.Client
 	logger       *logrus.Logger
 	mail         *gomail.Dialer
-	authService  *auth.Service
+	authHandler  *auth.AuthHandler
 }
 
 func Initialize(config *ServerConfig) *Server {
@@ -106,9 +106,9 @@ func (s *Server) Init() error {
 		ctx, cancel := context.WithTimeout(context.Background(), config.CtxTimeout*time.Second)
 		defer cancel()
 
-		if s.authService != nil {
-			if err := s.authService.Shutdown(); err != nil {
-				s.logger.Errorf("auth service shutdown error: %v", err)
+		if s.authHandler != nil {
+			if err := s.authHandler.Shutdown(); err != nil {
+				s.logger.Errorf("auth handler shutdown error: %v", err)
 			}
 		}
 

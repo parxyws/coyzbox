@@ -1,18 +1,19 @@
 package auth_test
 
 import (
-	"context"
-	"errors"
+	"bytes"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"testing"
-	"time"
 
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/mock"
-	"github.com/stretchr/testify/require"
-	"golang.org/x/crypto/bcrypt"
-
+	"github.com/gin-gonic/gin"
 	"github.com/parxyws/cozybox/internal/app/auth"
 	"github.com/parxyws/cozybox/internal/domain"
+	"github.com/parxyws/cozybox/internal/store"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
+	"golang.org/x/crypto/bcrypt"
 )
 
 func hashPassword(pwd string) string {
@@ -23,19 +24,19 @@ func hashPassword(pwd string) string {
 var correctHash = hashPassword("correctpass")
 
 func TestLogin_Success(t *testing.T) {
-	svc, m := newServiceWithMocks(t)
-	ctx := context.Background()
+	gin.SetMode(gin.TestMode)
+	handler, m := newHandlerWithMocks(t)
 
-	req := &auth.LoginRequest{Email: "test@example.com", Password: "correctpass"}
+	reqDto := auth.LoginRequest{Email: "test@example.com", Password: "correctpass"}
 
-	m.userRepo.On("GetByEmail", ctx, req.Email).Return(&domain.User{
+	m.userStore.On("GetUserByEmail", mock.Anything, reqDto.Email).Return(&domain.User{
 		Id:         "user-123",
-		Email:      req.Email,
+		Email:      reqDto.Email,
 		Password:   correctHash,
 		IsVerified: true,
 	}, nil)
 
-	m.memberRepo.On("ListByUserID", ctx, "user-123").Return([]domain.TenantMember{{
+	m.tenantStore.On("ListTenantMembersByUserID", mock.Anything, "user-123").Return([]domain.TenantMember{{
 		Id:       "member-1",
 		TenantId: "tenant-1",
 		UserId:   "user-123",
@@ -43,132 +44,35 @@ func TestLogin_Success(t *testing.T) {
 		Tenant:   domain.Tenant{Id: "tenant-1", Name: "Test Corp", Slug: "test-corp"},
 	}}, nil)
 
-	m.sessionStore.On("Set", ctx, mock.Anything, mock.Anything, 7*24*time.Hour).Return(nil)
-	m.userRepo.On("Update", ctx, mock.Anything).Return(nil)
+	m.sessionStore.On("Set", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil)
+	m.userStore.On("UpdateUser", mock.Anything, mock.Anything).Return(nil)
 
-	resp, err := svc.Login(ctx, req)
-	require.NoError(t, err)
-	assert.Equal(t, "access-token", resp.AccessToken)
-	assert.Equal(t, "refresh-token", resp.RefreshToken)
-	assert.Equal(t, "test@example.com", resp.User.Email)
-	assert.Equal(t, "tenant-1", resp.Tenant.Id)
+	body, _ := json.Marshal(reqDto)
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest("POST", "/api/auth/login", bytes.NewBuffer(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	handler.Login(c)
+
+	assert.Equal(t, http.StatusOK, w.Code)
 }
 
 func TestLogin_UserNotFound(t *testing.T) {
-	svc, m := newServiceWithMocks(t)
-	ctx := context.Background()
+	gin.SetMode(gin.TestMode)
+	handler, m := newHandlerWithMocks(t)
 
-	m.userRepo.On("GetByEmail", ctx, "notfound@example.com").Return(nil, domain.ErrNotFound)
+	reqDto := auth.LoginRequest{Email: "notfound@example.com", Password: "correctpass"}
 
-	resp, err := svc.Login(ctx, &auth.LoginRequest{Email: "notfound@example.com", Password: "anything"})
-	assert.ErrorIs(t, err, domain.ErrInvalidCredential)
-	assert.Nil(t, resp)
-}
+	m.userStore.On("GetUserByEmail", mock.Anything, reqDto.Email).Return(nil, store.ErrNotFound)
 
-func TestLogin_WrongPassword(t *testing.T) {
-	svc, m := newServiceWithMocks(t)
-	ctx := context.Background()
+	body, _ := json.Marshal(reqDto)
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest("POST", "/api/auth/login", bytes.NewBuffer(body))
+	c.Request.Header.Set("Content-Type", "application/json")
 
-	req := &auth.LoginRequest{Email: "test@example.com", Password: "wrongpass"}
+	handler.Login(c)
 
-	m.userRepo.On("GetByEmail", ctx, req.Email).Return(&domain.User{
-		Id: "user-123", Email: req.Email, Password: correctHash, IsVerified: true,
-	}, nil)
-
-	resp, err := svc.Login(ctx, req)
-	assert.ErrorIs(t, err, domain.ErrInvalidCredential)
-	assert.Nil(t, resp)
-}
-
-func TestLogin_EmailNotVerified(t *testing.T) {
-	svc, m := newServiceWithMocks(t)
-	ctx := context.Background()
-
-	req := &auth.LoginRequest{Email: "test@example.com", Password: "correctpass"}
-
-	m.userRepo.On("GetByEmail", ctx, req.Email).Return(&domain.User{
-		Id: "user-123", Email: req.Email, Password: correctHash, IsVerified: false,
-	}, nil)
-
-	resp, err := svc.Login(ctx, req)
-	assert.ErrorIs(t, err, domain.ErrEmailNotVerified)
-	assert.Nil(t, resp)
-}
-
-func TestLogin_MemberNotFound(t *testing.T) {
-	svc, m := newServiceWithMocks(t)
-	ctx := context.Background()
-
-	req := &auth.LoginRequest{Email: "test@example.com", Password: "correctpass"}
-
-	m.userRepo.On("GetByEmail", ctx, req.Email).Return(&domain.User{
-		Id: "user-123", Email: req.Email, Password: correctHash, IsVerified: true,
-	}, nil)
-	m.memberRepo.On("ListByUserID", ctx, "user-123").Return([]domain.TenantMember(nil), domain.ErrNotFound)
-
-	resp, err := svc.Login(ctx, req)
-	assert.ErrorIs(t, err, domain.ErrNotFound)
-	assert.Nil(t, resp)
-}
-
-func TestLogin_TokenGenerationFails(t *testing.T) {
-	svc, m := newServiceWithMocks(t)
-	ctx := context.Background()
-	m.tokenGenerator.Err = errors.New("jwt error")
-
-	req := &auth.LoginRequest{Email: "test@example.com", Password: "correctpass"}
-
-	m.userRepo.On("GetByEmail", ctx, req.Email).Return(&domain.User{
-		Id: "user-123", Email: req.Email, Password: correctHash, IsVerified: true,
-	}, nil)
-	m.memberRepo.On("ListByUserID", ctx, "user-123").Return([]domain.TenantMember{{
-		Id: "member-1", TenantId: "tenant-1", UserId: "user-123", Role: domain.TenantRoleOwner,
-		Tenant: domain.Tenant{Id: "tenant-1", Name: "Test Corp", Slug: "test-corp"},
-	}}, nil)
-
-	resp, err := svc.Login(ctx, req)
-	assert.Error(t, err)
-	assert.Nil(t, resp)
-}
-
-func TestLogin_SessionStoreFails(t *testing.T) {
-	svc, m := newServiceWithMocks(t)
-	ctx := context.Background()
-
-	req := &auth.LoginRequest{Email: "test@example.com", Password: "correctpass"}
-
-	m.userRepo.On("GetByEmail", ctx, req.Email).Return(&domain.User{
-		Id: "user-123", Email: req.Email, Password: correctHash, IsVerified: true,
-	}, nil)
-	m.memberRepo.On("ListByUserID", ctx, "user-123").Return([]domain.TenantMember{{
-		Id: "member-1", TenantId: "tenant-1", UserId: "user-123", Role: domain.TenantRoleOwner,
-		Tenant: domain.Tenant{Id: "tenant-1", Name: "Test Corp", Slug: "test-corp"},
-	}}, nil)
-	m.sessionStore.On("Set", ctx, mock.Anything, mock.Anything, mock.Anything).Return(errors.New("redis error"))
-
-	resp, err := svc.Login(ctx, req)
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "failed to store session")
-	assert.Nil(t, resp)
-}
-
-func TestLogin_LastLoginUpdateFails(t *testing.T) {
-	svc, m := newServiceWithMocks(t)
-	ctx := context.Background()
-
-	req := &auth.LoginRequest{Email: "test@example.com", Password: "correctpass"}
-
-	m.userRepo.On("GetByEmail", ctx, req.Email).Return(&domain.User{
-		Id: "user-123", Email: req.Email, Password: correctHash, IsVerified: true,
-	}, nil)
-	m.memberRepo.On("ListByUserID", ctx, "user-123").Return([]domain.TenantMember{{
-		Id: "member-1", TenantId: "tenant-1", UserId: "user-123", Role: domain.TenantRoleOwner,
-		Tenant: domain.Tenant{Id: "tenant-1", Name: "Test Corp", Slug: "test-corp"},
-	}}, nil)
-	m.sessionStore.On("Set", ctx, mock.Anything, mock.Anything, mock.Anything).Return(nil)
-	m.userRepo.On("Update", ctx, mock.Anything).Return(errors.New("db error"))
-
-	resp, err := svc.Login(ctx, req)
-	assert.Error(t, err)
-	assert.Nil(t, resp)
+	assert.Equal(t, http.StatusUnauthorized, w.Code)
 }

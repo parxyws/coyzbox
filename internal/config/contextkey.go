@@ -1,5 +1,7 @@
 package config
 
+import "time"
+
 type ContextKey string
 
 const (
@@ -10,5 +12,7 @@ const (
 )
 
 const (
-	CtxTimeout = 3
+	CtxTimeout           = 3
+	AccessTokenDuration  = 24 * time.Hour
+	RefreshTokenDuration = 7 * 24 * time.Hour
 )

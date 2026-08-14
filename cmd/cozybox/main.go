@@ -16,7 +16,10 @@ import (
 func main() {
 	cfg, err := config.InitAppConfig()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "failed to load config: %v\n", err)
+		_, err := fmt.Fprintf(os.Stderr, "failed to load config: %v\n", err)
+		if err != nil {
+			return
+		}
 		os.Exit(1)
 	}
 
@@ -42,7 +45,7 @@ func main() {
 		}
 	}()
 
-	authRedis, err := redis.InitAuthRedis(cfg)
+	authRedis, err := redis.InitClient(cfg, cfg.Redis.AuthDB)
 	if err != nil {
 		logrusLogger.Fatalf("failed to connect to auth redis: %v", err)
 	}
@@ -52,7 +55,7 @@ func main() {
 		}
 	}()
 
-	cacheRedis, err := redis.InitCacheRedis(cfg)
+	cacheRedis, err := redis.InitClient(cfg, cfg.Redis.CacheDB)
 	if err != nil {
 		logrusLogger.Fatalf("failed to connect to cache redis: %v", err)
 	}
@@ -62,7 +65,7 @@ func main() {
 		}
 	}()
 
-	limiterRedis, err := redis.InitLimiterRedis(cfg)
+	limiterRedis, err := redis.InitClient(cfg, cfg.Redis.LimiterDB)
 	if err != nil {
 		logrusLogger.Fatalf("failed to connect to limiter redis: %v", err)
 	}
@@ -77,20 +80,15 @@ func main() {
 		logrusLogger.Fatalf("failed to connect to minio: %v", err)
 	}
 
-	//tokenMaker, err := jwt.NewJWTMaker(cfg.Server.JWTSecretKey)
-	//if err != nil {
-	//	logrusLogger.Fatalf("failed to create jwt maker: %v", err)
-	//}
-
 	gomail := mail.NewGoMailDialer(cfg)
 
 	srv := server.Initialize(&server.ServerConfig{
 		Cfg:          cfg,
 		Db:           db,
 		MinioClient:  minioClient,
-		AuthRedis:    authRedis.Client,
-		CacheRedis:   cacheRedis.Client,
-		LimiterRedis: limiterRedis.Client,
+		AuthRedis:    authRedis,
+		CacheRedis:   cacheRedis,
+		LimiterRedis: limiterRedis,
 		Logger:       logrusLogger,
 		Mail:         gomail,
 	})

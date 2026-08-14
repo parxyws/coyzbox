@@ -4,29 +4,25 @@ import (
 	"time"
 
 	"github.com/parxyws/cozybox/internal/app/auth"
+	"github.com/parxyws/cozybox/internal/app/contact"
+	"github.com/parxyws/cozybox/internal/app/document"
+	"github.com/parxyws/cozybox/internal/app/tenant"
 	"github.com/parxyws/cozybox/internal/app/user"
 	"github.com/parxyws/cozybox/internal/middleware"
-	"github.com/parxyws/cozybox/internal/pkg/database/psql"
 	"github.com/parxyws/cozybox/internal/pkg/database/redis"
 	"github.com/parxyws/cozybox/internal/pkg/database/storage"
 	"github.com/parxyws/cozybox/internal/pkg/jwt"
 	"github.com/parxyws/cozybox/internal/pkg/mail"
+	"github.com/parxyws/cozybox/internal/store"
 )
 
 func (s *Server) Boostrap() error {
 	mailer := mail.NewMailer(s.mail, s.cfg)
 	s3Service := storage.NewS3Service(s.minioClient, s.cfg)
 
-	// Repositories
-	userRepo := psql.NewUserRepo(s.db)
-	tenantRepo := psql.NewTenantRepo(s.db)
-	memberRepo := psql.NewTenantMemberRepo(s.db)
-	orgRepo := psql.NewOrgRepo(s.db)
+	// Centralized Store & Redis Session Store
+	appStore := store.NewStore(s.db)
 	sessionStore := redis.NewSessionStore(s.authRedis)
-
-	// Transaction support
-	txManager := psql.NewTransactionManager(s.db)
-	factory := &repoFactory{}
 
 	tokenMaker, err := jwt.NewJWTMaker(s.cfg.Server.JWTSecretKey)
 	if err != nil {
@@ -35,25 +31,20 @@ func (s *Server) Boostrap() error {
 
 	addr := s.cfg.Server.BaseUrl
 
-	authService := auth.NewAuthService(
-		userRepo,
-		tenantRepo,
-		memberRepo,
-		orgRepo,
-		sessionStore,
-		tokenMaker,
-		mailer,
-		s3Service,
-		txManager,
-		factory,
-		addr,
-	)
-	s.authService = authService
+	// Domain Services
+	authService := auth.NewAuthService(appStore, sessionStore, tokenMaker, mailer, s3Service, addr)
+	userService := user.NewUserService(appStore.User())
+	contactService := contact.NewContactService(appStore.Contact(), appStore.Organization())
+	tenantService := tenant.NewTenantService(appStore.Tenant(), appStore.Organization(), s3Service)
+	docEngine := document.NewService(appStore, s3Service)
 
-	userService := user.NewUserService(userRepo)
-
+	// Handlers
 	authHandler := auth.NewAuthHandler(authService)
+	s.authHandler = authHandler
 	userHandler := user.NewUserHandler(userService)
+	contactHandler := contact.NewContactHandler(contactService)
+	tenantHandler := tenant.NewHandler(tenantService)
+	docHandler := document.NewHandler(docEngine)
 
 	// Global middleware
 	s.app.Use(middleware.RequestID())
@@ -85,6 +76,12 @@ func (s *Server) Boostrap() error {
 	protected.Use(middleware.NewAuthMiddleware(tokenMaker, sessionStore))
 	authHandler.RegisterProtectedRoutes(protected)
 	userHandler.RegisterRoutes(protected)
+	contactHandler.RegisterRoutes(protected)
+	tenantHandler.RegisterRoutes(protected)
+
+	onboarded := protected.Group("")
+	onboarded.Use(middleware.RequireOnboarding(appStore.User()))
+	docHandler.RegisterRoutes(onboarded)
 
 	return nil
 }

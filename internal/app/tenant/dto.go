@@ -1,6 +1,9 @@
 package tenant
 
-import "encoding/json"
+import (
+	"encoding/json"
+	"time"
+)
 
 type UpdateOrganizationRequest struct {
 	Name            string `json:"name"            validate:"omitempty,min=2,max=200"`
@@ -38,15 +41,18 @@ type OrganizationResponse struct {
 }
 
 type UpdateTemplateConfigRequest struct {
+	Name   *string         `json:"name"     validate:"omitempty,min=2,max=100"`
 	Status *string         `json:"status"   validate:"omitempty,oneof=draft published"`
 	Config json.RawMessage `json:"config"   validate:"omitempty"`
 }
 
 type TemplateConfigResponse struct {
-	Id       string          `json:"id"`
-	TenantId string          `json:"tenant_id"`
-	BaseType string          `json:"base_type"`
-	Status   string          `json:"status"`
-	Name     string          `json:"name"`
-	Config   json.RawMessage `json:"config"`
+	Id        string          `json:"id"`
+	TenantId  string          `json:"tenant_id"`
+	BaseType  string          `json:"base_type"`
+	Status    string          `json:"status"`
+	Name      string          `json:"name"`
+	Config    json.RawMessage `json:"config"`
+	CreatedAt time.Time       `json:"created_at"`
+	UpdatedAt time.Time       `json:"updated_at"`
 }

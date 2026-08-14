@@ -1,36 +1,30 @@
 package auth
 
 import (
-	"context"
+	"errors"
+	"io"
 	"net/http"
+	"strings"
 
 	"github.com/gin-gonic/gin"
-	"github.com/parxyws/cozybox/internal/config"
 	"github.com/parxyws/cozybox/internal/domain"
 	"github.com/parxyws/cozybox/internal/pkg/helper"
 	"github.com/parxyws/cozybox/internal/pkg/validator"
+	"github.com/parxyws/cozybox/internal/store"
 )
 
-// AuthService is the consuming-side interface for auth operations.
-type AuthService interface {
-	Register(ctx context.Context, req *RegisterUserRequest) (*RegisterResponse, error)
-	VerifyEmail(ctx context.Context, req *VerifyEmailRequest) (*VerifyEmailResponse, error)
-	Login(ctx context.Context, req *LoginRequest) (*UserAuthenticateResponse, error)
-	RefreshToken(ctx context.Context, req *RefreshTokenRequest) (*UserAuthenticateResponse, error)
-	Logout(ctx context.Context, sessionID string) error
-	CompleteOnboarding(ctx context.Context, userID string, tenantID string, req *OnboardingRequest, image *domain.UploadInput) error
-	ForgotPassword(ctx context.Context, req *ForgotPasswordRequest) error
-	ResetPassword(ctx context.Context, req *ResetPasswordRequest) error
-	ListWorkspaces(ctx context.Context, userID string) ([]WorkspaceResponse, error)
-	SwitchWorkspace(ctx context.Context, userID, workspaceID, sessionID string) (*SwitchWorkspaceResponse, error)
-}
-
 type AuthHandler struct {
-	service AuthService
+	authService AuthService
 }
 
-func NewAuthHandler(service AuthService) *AuthHandler {
-	return &AuthHandler{service: service}
+func NewAuthHandler(authService AuthService) *AuthHandler {
+	return &AuthHandler{
+		authService: authService,
+	}
+}
+
+func (a *AuthHandler) Shutdown() error {
+	return a.authService.Shutdown()
 }
 
 func (a *AuthHandler) RegisterRoutes(route *gin.RouterGroup, loginLimiter, registerLimiter, forgotPwLimiter gin.HandlerFunc) {
@@ -52,56 +46,7 @@ func (a *AuthHandler) RegisterProtectedRoutes(route *gin.RouterGroup) {
 	}
 	route.GET("/workspaces", a.ListWorkspaces)
 	route.POST("/workspaces/switch", a.SwitchWorkspace)
-}
-
-func (a *AuthHandler) ListWorkspaces(c *gin.Context) {
-	ctx, cancel := helper.GetContext(c)
-	defer cancel()
-
-	userID, exists := c.Get(string(config.UserID))
-	if !exists {
-		helper.Error(c, http.StatusUnauthorized, "Unauthorized", nil)
-		return
-	}
-
-	result, err := a.service.ListWorkspaces(ctx, userID.(string))
-	if err != nil {
-		helper.Error(c, http.StatusInternalServerError, "Failed to list workspaces", err)
-		return
-	}
-
-	helper.Success(c, http.StatusOK, "Workspaces retrieved successfully", result)
-}
-
-func (a *AuthHandler) SwitchWorkspace(c *gin.Context) {
-	ctx, cancel := helper.GetContext(c)
-	defer cancel()
-
-	userID, exists := c.Get(string(config.UserID))
-	sessionID, sessionExists := c.Get(string(config.SessionID))
-	if !exists || !sessionExists {
-		helper.Error(c, http.StatusUnauthorized, "Unauthorized", nil)
-		return
-	}
-
-	var req SwitchWorkspaceRequest
-	if err := c.ShouldBindBodyWithJSON(&req); err != nil {
-		helper.Error(c, http.StatusBadRequest, "Invalid request body", err)
-		return
-	}
-
-	if err := validator.Validate.StructCtx(ctx, req); err != nil {
-		helper.Error(c, http.StatusBadRequest, "Invalid request body", err)
-		return
-	}
-
-	result, err := a.service.SwitchWorkspace(ctx, userID.(string), req.WorkspaceID, sessionID.(string))
-	if err != nil {
-		helper.Error(c, http.StatusUnauthorized, "Failed to switch workspace", err)
-		return
-	}
-
-	helper.Success(c, http.StatusOK, "Workspace switched successfully", result)
+	route.POST("/onboarding", a.CompleteOnboarding)
 }
 
 func (a *AuthHandler) Register(c *gin.Context) {
@@ -109,23 +54,27 @@ func (a *AuthHandler) Register(c *gin.Context) {
 	defer cancel()
 
 	var req RegisterUserRequest
-	if err := c.ShouldBindBodyWithJSON(&req); err != nil {
+	if err := c.ShouldBindJSON(&req); err != nil {
 		helper.Error(c, http.StatusBadRequest, "Invalid request body", err)
 		return
 	}
 
 	if err := validator.Validate.StructCtx(ctx, req); err != nil {
-		helper.Error(c, http.StatusBadRequest, "Invalid request body", err)
+		helper.Error(c, http.StatusBadRequest, "Validation failed", err)
 		return
 	}
 
-	result, err := a.service.Register(ctx, &req)
+	resp, err := a.authService.Register(ctx, req)
 	if err != nil {
-		helper.Error(c, http.StatusInternalServerError, "Failed to register user", err)
+		if errors.Is(err, store.ErrAlreadyExists) {
+			helper.Error(c, http.StatusConflict, "User or tenant already exists", err)
+			return
+		}
+		helper.Error(c, http.StatusInternalServerError, "Failed to complete registration", err)
 		return
 	}
 
-	helper.Success(c, http.StatusCreated, "User registered successfully", result)
+	helper.Success(c, http.StatusCreated, "User registered successfully. Please verify your email.", resp)
 }
 
 func (a *AuthHandler) VerifyEmail(c *gin.Context) {
@@ -133,23 +82,31 @@ func (a *AuthHandler) VerifyEmail(c *gin.Context) {
 	defer cancel()
 
 	var req VerifyEmailRequest
-	if err := c.ShouldBindBodyWithJSON(&req); err != nil {
+	if err := c.ShouldBindJSON(&req); err != nil {
 		helper.Error(c, http.StatusBadRequest, "Invalid request body", err)
 		return
 	}
 
 	if err := validator.Validate.StructCtx(ctx, req); err != nil {
-		helper.Error(c, http.StatusBadRequest, "Invalid request body", err)
+		helper.Error(c, http.StatusBadRequest, "Validation failed", err)
 		return
 	}
 
-	result, err := a.service.VerifyEmail(ctx, &req)
+	resp, err := a.authService.VerifyEmail(ctx, req)
 	if err != nil {
+		if errors.Is(err, domain.ErrInvalidOTP) {
+			helper.Error(c, http.StatusBadRequest, "Invalid or expired OTP", err)
+			return
+		}
+		if errors.Is(err, domain.ErrSessionExpired) {
+			helper.Error(c, http.StatusNotFound, "Registration session expired", err)
+			return
+		}
 		helper.Error(c, http.StatusInternalServerError, "Failed to verify email", err)
 		return
 	}
 
-	helper.Success(c, http.StatusOK, "User email verified successfully", result)
+	helper.Success(c, http.StatusOK, "Email verified successfully", resp)
 }
 
 func (a *AuthHandler) Login(c *gin.Context) {
@@ -157,27 +114,38 @@ func (a *AuthHandler) Login(c *gin.Context) {
 	defer cancel()
 
 	var req LoginRequest
-	if err := c.ShouldBindBodyWithJSON(&req); err != nil {
+	if err := c.ShouldBindJSON(&req); err != nil {
 		helper.Error(c, http.StatusBadRequest, "Invalid request body", err)
 		return
 	}
 
 	if err := validator.Validate.StructCtx(ctx, req); err != nil {
-		helper.Error(c, http.StatusBadRequest, "Invalid request body", err)
+		helper.Error(c, http.StatusBadRequest, "Validation failed", err)
 		return
 	}
 
-	// Populate transport metadata — not part of the JSON body.
 	req.ClientIP = c.ClientIP()
-	req.UserAgent = c.Request.UserAgent()
+	req.UserAgent = c.GetHeader("User-Agent")
 
-	result, err := a.service.Login(ctx, &req)
+	resp, err := a.authService.Login(ctx, req)
 	if err != nil {
-		helper.Error(c, http.StatusUnauthorized, "Login failed", err)
+		if errors.Is(err, domain.ErrInvalidCredential) {
+			helper.Error(c, http.StatusUnauthorized, "Invalid credentials", err)
+			return
+		}
+		if errors.Is(err, domain.ErrEmailNotVerified) {
+			helper.Error(c, http.StatusForbidden, "Email not verified", err)
+			return
+		}
+		if errors.Is(err, store.ErrNotFound) || errors.Is(err, domain.ErrNotFound) {
+			helper.Error(c, http.StatusNotFound, "No workspaces found for user", err)
+			return
+		}
+		helper.Error(c, http.StatusInternalServerError, "Failed to authenticate", err)
 		return
 	}
 
-	helper.Success(c, http.StatusOK, "Login successful", result)
+	helper.Success(c, http.StatusOK, "Login successful", resp)
 }
 
 func (a *AuthHandler) RefreshToken(c *gin.Context) {
@@ -185,41 +153,27 @@ func (a *AuthHandler) RefreshToken(c *gin.Context) {
 	defer cancel()
 
 	var req RefreshTokenRequest
-	if err := c.ShouldBindBodyWithJSON(&req); err != nil {
+	if err := c.ShouldBindJSON(&req); err != nil {
 		helper.Error(c, http.StatusBadRequest, "Invalid request body", err)
 		return
 	}
 
 	if err := validator.Validate.StructCtx(ctx, req); err != nil {
-		helper.Error(c, http.StatusBadRequest, "Invalid request body", err)
+		helper.Error(c, http.StatusBadRequest, "Validation failed", err)
 		return
 	}
 
-	result, err := a.service.RefreshToken(ctx, &req)
+	resp, err := a.authService.RefreshToken(ctx, req)
 	if err != nil {
-		helper.Error(c, http.StatusUnauthorized, "Token refresh failed", err)
+		if errors.Is(err, domain.ErrSessionExpired) || errors.Is(err, domain.ErrInvalidToken) {
+			helper.Error(c, http.StatusUnauthorized, "Session expired or invalid", err)
+			return
+		}
+		helper.Error(c, http.StatusInternalServerError, "Failed to refresh token", err)
 		return
 	}
 
-	helper.Success(c, http.StatusOK, "Token refreshed successfully", result)
-}
-
-func (a *AuthHandler) Logout(c *gin.Context) {
-	ctx, cancel := helper.GetContext(c)
-	defer cancel()
-
-	sessionID, exists := c.Get("session_id")
-	if !exists {
-		helper.Error(c, http.StatusBadRequest, "Session not found", nil)
-		return
-	}
-
-	if err := a.service.Logout(ctx, sessionID.(string)); err != nil {
-		helper.Error(c, http.StatusInternalServerError, "Logout failed", err)
-		return
-	}
-
-	helper.Success(c, http.StatusOK, "Logged out successfully", nil)
+	helper.Success(c, http.StatusOK, "Token refreshed successfully", resp)
 }
 
 func (a *AuthHandler) ForgotPassword(c *gin.Context) {
@@ -227,22 +181,27 @@ func (a *AuthHandler) ForgotPassword(c *gin.Context) {
 	defer cancel()
 
 	var req ForgotPasswordRequest
-	if err := c.ShouldBindBodyWithJSON(&req); err != nil {
+	if err := c.ShouldBindJSON(&req); err != nil {
 		helper.Error(c, http.StatusBadRequest, "Invalid request body", err)
 		return
 	}
 
 	if err := validator.Validate.StructCtx(ctx, req); err != nil {
-		helper.Error(c, http.StatusBadRequest, "Invalid request body", err)
+		helper.Error(c, http.StatusBadRequest, "Validation failed", err)
 		return
 	}
 
-	if err := a.service.ForgotPassword(ctx, &req); err != nil {
-		helper.Error(c, http.StatusUnauthorized, "Forgot password failed", err)
+	resp, err := a.authService.ForgotPassword(ctx, req)
+	if err != nil {
+		if errors.Is(err, store.ErrNotFound) || errors.Is(err, domain.ErrNotFound) {
+			helper.Error(c, http.StatusNotFound, "User email not found", err)
+			return
+		}
+		helper.Error(c, http.StatusInternalServerError, "Failed to initiate password reset", err)
 		return
 	}
 
-	helper.Success(c, http.StatusOK, "Request forgot password successfully", nil)
+	helper.Success(c, http.StatusOK, "Password reset email sent", resp)
 }
 
 func (a *AuthHandler) ResetPassword(c *gin.Context) {
@@ -250,20 +209,147 @@ func (a *AuthHandler) ResetPassword(c *gin.Context) {
 	defer cancel()
 
 	var req ResetPasswordRequest
-	if err := c.ShouldBindBodyWithJSON(&req); err != nil {
+	if err := c.ShouldBindJSON(&req); err != nil {
 		helper.Error(c, http.StatusBadRequest, "Invalid request body", err)
 		return
 	}
 
 	if err := validator.Validate.StructCtx(ctx, req); err != nil {
+		helper.Error(c, http.StatusBadRequest, "Validation failed", err)
+		return
+	}
+
+	if err := a.authService.ResetPassword(ctx, req); err != nil {
+		if errors.Is(err, domain.ErrInvalidToken) {
+			helper.Error(c, http.StatusBadRequest, "Invalid or expired token", err)
+			return
+		}
+		helper.Error(c, http.StatusInternalServerError, "Failed to reset password", err)
+		return
+	}
+
+	helper.Success(c, http.StatusOK, "Password reset successfully", nil)
+}
+
+func (a *AuthHandler) Logout(c *gin.Context) {
+	ctx, cancel := helper.GetContext(c)
+	defer cancel()
+
+	authHeader := c.GetHeader("Authorization")
+	fields := strings.Fields(authHeader)
+	if len(fields) < 2 {
+		helper.Error(c, http.StatusUnauthorized, "Missing authorization header", domain.ErrInvalidToken)
+		return
+	}
+
+	token := fields[1]
+	if err := a.authService.Logout(ctx, token); err != nil {
+		helper.Error(c, http.StatusUnauthorized, "Failed to logout", err)
+		return
+	}
+
+	helper.Success(c, http.StatusOK, "Logged out successfully", nil)
+}
+
+func (a *AuthHandler) ListWorkspaces(c *gin.Context) {
+	ctx, cancel := helper.GetContext(c)
+	defer cancel()
+
+	userID, ok := helper.UserIDFromContext(ctx)
+	if !ok {
+		helper.Error(c, http.StatusUnauthorized, "Unauthorized: user context missing", nil)
+		return
+	}
+
+	workspaces, err := a.authService.ListWorkspaces(ctx, userID)
+	if err != nil {
+		helper.Error(c, http.StatusInternalServerError, "Failed to list workspaces", err)
+		return
+	}
+
+	helper.Success(c, http.StatusOK, "Workspaces retrieved successfully", workspaces)
+}
+
+func (a *AuthHandler) SwitchWorkspace(c *gin.Context) {
+	ctx, cancel := helper.GetContext(c)
+	defer cancel()
+
+	userID, ok := helper.UserIDFromContext(ctx)
+	if !ok {
+		helper.Error(c, http.StatusUnauthorized, "Unauthorized: user context missing", nil)
+		return
+	}
+
+	var req SwitchWorkspaceRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
 		helper.Error(c, http.StatusBadRequest, "Invalid request body", err)
 		return
 	}
 
-	if err := a.service.ResetPassword(ctx, &req); err != nil {
-		helper.Error(c, http.StatusUnauthorized, "Reset password failed", err)
+	if err := validator.Validate.StructCtx(ctx, req); err != nil {
+		helper.Error(c, http.StatusBadRequest, "Validation failed", err)
 		return
 	}
 
-	helper.Success(c, http.StatusOK, "Request reset password successfully", nil)
+	resp, err := a.authService.SwitchWorkspace(ctx, userID, req)
+	if err != nil {
+		if errors.Is(err, domain.ErrUnauthorized) {
+			helper.Error(c, http.StatusForbidden, "User is not a member of the workspace", err)
+			return
+		}
+		helper.Error(c, http.StatusInternalServerError, "Failed to switch workspace", err)
+		return
+	}
+
+	helper.Success(c, http.StatusOK, "Workspace switched successfully", resp)
+}
+
+func (a *AuthHandler) CompleteOnboarding(c *gin.Context) {
+	ctx, cancel := helper.GetContext(c)
+	defer cancel()
+
+	userID, ok := helper.UserIDFromContext(ctx)
+	if !ok {
+		helper.Error(c, http.StatusUnauthorized, "Unauthorized: user context missing", nil)
+		return
+	}
+	tenantID, ok := helper.TenantIDFromContext(ctx)
+	if !ok {
+		helper.Error(c, http.StatusUnauthorized, "Unauthorized: tenant context missing", nil)
+		return
+	}
+
+	var req OnboardingRequest
+	if err := c.ShouldBind(&req); err != nil {
+		helper.Error(c, http.StatusBadRequest, "Invalid form data", err)
+		return
+	}
+
+	if err := validator.Validate.StructCtx(ctx, req); err != nil {
+		helper.Error(c, http.StatusBadRequest, "Validation failed", err)
+		return
+	}
+
+	var logoBytes []byte
+	var logoFilename string
+	fileHeader, err := c.FormFile("logo")
+	if err == nil && fileHeader != nil {
+		f, openErr := fileHeader.Open()
+		if openErr == nil {
+			defer f.Close()
+			bytes, readErr := io.ReadAll(f)
+			if readErr == nil {
+				logoBytes = bytes
+				logoFilename = fileHeader.Filename
+			}
+		}
+	}
+
+	resp, err := a.authService.CompleteOnboarding(ctx, userID, tenantID, req, logoBytes, logoFilename)
+	if err != nil {
+		helper.Error(c, http.StatusInternalServerError, "Failed to complete onboarding", err)
+		return
+	}
+
+	helper.Success(c, http.StatusOK, "Onboarding completed successfully", resp)
 }

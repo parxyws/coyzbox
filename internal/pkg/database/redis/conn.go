@@ -6,17 +6,14 @@ import (
 	"time"
 
 	"github.com/parxyws/cozybox/internal/config"
-	redisclient "github.com/redis/go-redis/v9"
+	"github.com/redis/go-redis/v9"
 )
 
-type Client struct {
-	*redisclient.Client
-}
-
-func newRedisClient(addr, password string, db int) (*Client, error) {
-	client := redisclient.NewClient(&redisclient.Options{
+func InitClient(cfg *config.Config, db int) (*redis.Client, error) {
+	addr := fmt.Sprintf("%s:%d", cfg.Redis.Host, cfg.Redis.Port)
+	client := redis.NewClient(&redis.Options{
 		Addr:     addr,
-		Password: password,
+		Password: cfg.Redis.Password,
 		DB:       db,
 
 		PoolSize:       100,
@@ -41,25 +38,10 @@ func newRedisClient(addr, password string, db int) (*Client, error) {
 
 	if err := client.Ping(ctx).Err(); err != nil {
 		if closeErr := client.Close(); closeErr != nil {
-			return nil, fmt.Errorf("failed to connect to redis db %d: %w (also failed to close client: %v)", db, err, closeErr)
+			return nil, fmt.Errorf("failed to connect to redis db %d: %w (close error: %v)", db, err, closeErr)
 		}
 		return nil, fmt.Errorf("failed to connect to redis db %d: %w", db, err)
 	}
 
-	return &Client{Client: client}, nil
-}
-
-func InitAuthRedis(cfg *config.Config) (*Client, error) {
-	addr := fmt.Sprintf("%s:%d", cfg.Redis.Host, cfg.Redis.Port)
-	return newRedisClient(addr, cfg.Redis.Password, cfg.Redis.AuthDB)
-}
-
-func InitCacheRedis(cfg *config.Config) (*Client, error) {
-	addr := fmt.Sprintf("%s:%d", cfg.Redis.Host, cfg.Redis.Port)
-	return newRedisClient(addr, cfg.Redis.Password, cfg.Redis.CacheDB)
-}
-
-func InitLimiterRedis(cfg *config.Config) (*Client, error) {
-	addr := fmt.Sprintf("%s:%d", cfg.Redis.Host, cfg.Redis.Port)
-	return newRedisClient(addr, cfg.Redis.Password, cfg.Redis.LimiterDB)
+	return client, nil
 }

@@ -12,6 +12,8 @@ var (
 	ErrInvalidCredential       = errors.New("invalid credentials")
 	ErrEmailNotVerified        = errors.New("email not verified")
 	ErrOTPInvalid              = errors.New("invalid or expired OTP")
+	ErrInvalidOTP              = errors.New("invalid or expired OTP")
+	ErrInvalidToken            = errors.New("invalid or expired token")
 	ErrSessionExpired          = errors.New("session expired")
 	ErrOnboardingRequired      = errors.New("onboarding must be completed before this action")
 	ErrDocumentImmutable       = errors.New("document cannot be modified in its current status")

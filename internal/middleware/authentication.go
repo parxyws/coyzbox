@@ -83,3 +83,36 @@ func NewAuthMiddleware(tokenGen jwt.TokenGenerator, sessionStore SessionValidato
 		c.Next()
 	}
 }
+
+// UserGetter fetches a User record by ID to check onboarding status.
+type UserGetter interface {
+	GetByID(ctx context.Context, id string) (*domain.User, error)
+}
+
+// RequireOnboarding creates a middleware that checks if the authenticated user has completed onboarding.
+func RequireOnboarding(userRepo UserGetter) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		userID, exists := c.Get(string(config.UserID))
+		if !exists {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+			return
+		}
+
+		user, err := userRepo.GetByID(c.Request.Context(), userID.(string))
+		if err != nil {
+			c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "failed to check onboarding status"})
+			return
+		}
+
+		if !user.OnboardingCompleted {
+			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{
+				"error":     "onboarding required",
+				"redirect":  "/onboarding",
+				"completed": false,
+			})
+			return
+		}
+
+		c.Next()
+	}
+}

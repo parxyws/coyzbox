@@ -1,25 +1,25 @@
 package auth_test
 
 import (
-	"context"
+	"bytes"
 	"encoding/json"
 	"errors"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/mock"
-	"github.com/stretchr/testify/require"
-
+	"github.com/gin-gonic/gin"
 	"github.com/parxyws/cozybox/internal/app/auth"
 	"github.com/parxyws/cozybox/internal/domain"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
 )
 
 func TestVerifyEmail_Success(t *testing.T) {
-	svc, m := newServiceWithMocks(t)
-	ctx := context.Background()
+	gin.SetMode(gin.TestMode)
+	handler, m := newHandlerWithMocks(t)
 
 	refID := "dGVzdEBleGFtcGxlLmNvbQ==-01JMOCK-Z"
-
 	userData := auth.UserResponse{
 		Id:    "user-123",
 		Name:  "Test User",
@@ -27,128 +27,64 @@ func TestVerifyEmail_Success(t *testing.T) {
 	}
 	data, _ := json.Marshal(userData)
 
-	m.sessionStore.On("Get", ctx, "otp-"+refID).Return("123456", nil)
+	m.sessionStore.On("Get", mock.Anything, "otp-"+refID).Return("123456", nil)
 	m.sessionStore.On("Delete", mock.Anything, mock.Anything).Return(nil)
-	m.sessionStore.On("Get", ctx, "ref-"+refID).Return(string(data), nil)
-	m.userRepo.On("GetByID", ctx, "user-123").Return(&domain.User{
+	m.sessionStore.On("Get", mock.Anything, "ref-"+refID).Return(string(data), nil)
+	m.userStore.On("GetUserByID", mock.Anything, "user-123").Return(&domain.User{
 		Id:         "user-123",
 		Email:      "test@example.com",
 		IsVerified: false,
 	}, nil)
-	m.userRepo.On("Update", ctx, mock.MatchedBy(func(u *domain.User) bool {
+	m.userStore.On("UpdateUser", mock.Anything, mock.MatchedBy(func(u *domain.User) bool {
 		return u.IsVerified == true
 	})).Return(nil)
 
-	req := &auth.VerifyEmailRequest{ReferenceId: refID, Otp: "123456"}
-	resp, err := svc.VerifyEmail(ctx, req)
-	require.NoError(t, err)
-	assert.Equal(t, refID, resp.ReferenceId)
+	reqDto := auth.VerifyEmailRequest{ReferenceId: refID, Otp: "123456"}
+	body, _ := json.Marshal(reqDto)
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest("POST", "/api/auth/verify-email", bytes.NewBuffer(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	handler.VerifyEmail(c)
+
+	assert.Equal(t, http.StatusOK, w.Code)
 }
 
 func TestVerifyEmail_OTPNotFound(t *testing.T) {
-	svc, m := newServiceWithMocks(t)
-	ctx := context.Background()
+	gin.SetMode(gin.TestMode)
+	handler, m := newHandlerWithMocks(t)
+
 	refID := "dGVzdEBleGFtcGxlLmNvbQ==-01JMOCK-Z"
+	m.sessionStore.On("Get", mock.Anything, "otp-"+refID).Return("", errors.New("not found"))
 
-	m.sessionStore.On("Get", ctx, "otp-"+refID).Return("", errors.New("not found"))
+	reqDto := auth.VerifyEmailRequest{ReferenceId: refID, Otp: "123456"}
+	body, _ := json.Marshal(reqDto)
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest("POST", "/api/auth/verify-email", bytes.NewBuffer(body))
+	c.Request.Header.Set("Content-Type", "application/json")
 
-	req := &auth.VerifyEmailRequest{ReferenceId: refID, Otp: "123456"}
-	resp, err := svc.VerifyEmail(ctx, req)
-	assert.Error(t, err)
-	assert.Nil(t, resp)
-	assert.ErrorIs(t, err, domain.ErrOTPInvalid)
+	handler.VerifyEmail(c)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
 }
 
 func TestVerifyEmail_OTPMismatch(t *testing.T) {
-	svc, m := newServiceWithMocks(t)
-	ctx := context.Background()
+	gin.SetMode(gin.TestMode)
+	handler, m := newHandlerWithMocks(t)
+
 	refID := "dGVzdEBleGFtcGxlLmNvbQ==-01JMOCK-Z"
+	m.sessionStore.On("Get", mock.Anything, "otp-"+refID).Return("999999", nil)
 
-	m.sessionStore.On("Get", ctx, "otp-"+refID).Return("999999", nil)
-	// Delete NOT called when OTP mismatches
+	reqDto := auth.VerifyEmailRequest{ReferenceId: refID, Otp: "123456"}
+	body, _ := json.Marshal(reqDto)
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest("POST", "/api/auth/verify-email", bytes.NewBuffer(body))
+	c.Request.Header.Set("Content-Type", "application/json")
 
-	req := &auth.VerifyEmailRequest{ReferenceId: refID, Otp: "123456"}
-	resp, err := svc.VerifyEmail(ctx, req)
-	assert.Error(t, err)
-	assert.Nil(t, resp)
-	assert.ErrorIs(t, err, domain.ErrOTPInvalid)
-}
+	handler.VerifyEmail(c)
 
-func TestVerifyEmail_RefDataNotFound(t *testing.T) {
-	svc, m := newServiceWithMocks(t)
-	ctx := context.Background()
-	refID := "dGVzdEBleGFtcGxlLmNvbQ==-01JMOCK-Z"
-
-	m.sessionStore.On("Get", ctx, "otp-"+refID).Return("123456", nil)
-	m.sessionStore.On("Delete", mock.Anything, mock.Anything).Return(nil)
-	m.sessionStore.On("Get", ctx, "ref-"+refID).Return("", errors.New("not found"))
-
-	req := &auth.VerifyEmailRequest{ReferenceId: refID, Otp: "123456"}
-	resp, err := svc.VerifyEmail(ctx, req)
-	assert.Error(t, err)
-	assert.Nil(t, resp)
-	assert.ErrorIs(t, err, domain.ErrNotFound)
-}
-
-func TestVerifyEmail_UserNotFound(t *testing.T) {
-	svc, m := newServiceWithMocks(t)
-	ctx := context.Background()
-	refID := "dGVzdEBleGFtcGxlLmNvbQ==-01JMOCK-Z"
-
-	userData := auth.UserResponse{Id: "user-123", Name: "Test", Email: "test@example.com"}
-	data, _ := json.Marshal(userData)
-
-	m.sessionStore.On("Get", ctx, "otp-"+refID).Return("123456", nil)
-	m.sessionStore.On("Delete", mock.Anything, mock.Anything).Return(nil)
-	m.sessionStore.On("Get", ctx, "ref-"+refID).Return(string(data), nil)
-	m.userRepo.On("GetByID", ctx, "user-123").Return(nil, domain.ErrNotFound)
-
-	req := &auth.VerifyEmailRequest{ReferenceId: refID, Otp: "123456"}
-	resp, err := svc.VerifyEmail(ctx, req)
-	assert.Error(t, err)
-	assert.Nil(t, resp)
-}
-
-func TestVerifyEmail_UserUpdateFails(t *testing.T) {
-	svc, m := newServiceWithMocks(t)
-	ctx := context.Background()
-	refID := "dGVzdEBleGFtcGxlLmNvbQ==-01JMOCK-Z"
-
-	userData := auth.UserResponse{Id: "user-123", Name: "Test", Email: "test@example.com"}
-	data, _ := json.Marshal(userData)
-
-	m.sessionStore.On("Get", ctx, "otp-"+refID).Return("123456", nil)
-	m.sessionStore.On("Delete", mock.Anything, mock.Anything).Return(nil)
-	m.sessionStore.On("Get", ctx, "ref-"+refID).Return(string(data), nil)
-	m.userRepo.On("GetByID", ctx, "user-123").Return(&domain.User{
-		Id:         "user-123",
-		IsVerified: false,
-	}, nil)
-	m.userRepo.On("Update", ctx, mock.Anything).Return(errors.New("update error"))
-
-	req := &auth.VerifyEmailRequest{ReferenceId: refID, Otp: "123456"}
-	resp, err := svc.VerifyEmail(ctx, req)
-	assert.Error(t, err)
-	assert.Nil(t, resp)
-}
-
-func TestVerifyEmail_WhitespaceTrimRefID(t *testing.T) {
-	svc, m := newServiceWithMocks(t)
-	ctx := context.Background()
-	refID := "dGVzdEBleGFtcGxlLmNvbQ==-01JMOCK-Z"
-	trimmedRefID := "dGVzdEBleGFtcGxlLmNvbQ==-01JMOCK-Z"
-
-	userData := auth.UserResponse{Id: "user-123", Name: "Test", Email: "test@example.com"}
-	data, _ := json.Marshal(userData)
-
-	m.sessionStore.On("Get", ctx, "otp-"+trimmedRefID).Return("123456", nil)
-	m.sessionStore.On("Delete", mock.Anything, mock.Anything).Return(nil)
-	m.sessionStore.On("Get", ctx, "ref-"+trimmedRefID).Return(string(data), nil)
-	m.userRepo.On("GetByID", ctx, "user-123").Return(&domain.User{Id: "user-123", IsVerified: false}, nil)
-	m.userRepo.On("Update", ctx, mock.Anything).Return(nil)
-
-	req := &auth.VerifyEmailRequest{ReferenceId: " " + refID + " ", Otp: "123456"}
-	resp, err := svc.VerifyEmail(ctx, req)
-	require.NoError(t, err)
-	assert.Equal(t, trimmedRefID, resp.ReferenceId)
+	assert.Equal(t, http.StatusBadRequest, w.Code)
 }

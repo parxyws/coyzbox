@@ -27,7 +27,7 @@ const (
 // Document Status — lifecycle state (maps to the 'status' column)
 //
 // Tracks where the document is in its publication lifecycle:
-//   draft → published → cancelled
+//   draft → published → canceled
 //   published → expired  (cron: past valid_until)
 // =============================================================================
 
@@ -47,7 +47,7 @@ func (s DocumentStatus) IsEditable() bool {
 
 // IsTerminalStatus returns true when the document lifecycle has permanently ended.
 func (s DocumentStatus) IsTerminalStatus() bool {
-	return s == DocumentStatusCancelled
+	return s == DocumentStatusCancelled || s == DocumentStatusExpired
 }
 
 // CanPublish returns true if the document is in a state that allows publishing.
@@ -60,6 +60,7 @@ func (s DocumentStatus) CanPublish() bool {
 //
 // Tracks the recipient/payment lifecycle once a document is published:
 //   nil (not yet in a business flow)
+//   → issued
 //   → accepted / rejected
 //   → overdue (cron: past due_date without full payment)
 //   → paid / partially_paid
@@ -68,6 +69,7 @@ func (s DocumentStatus) CanPublish() bool {
 type DocumentFlowStatus string
 
 const (
+	DocumentFlowStatusIssued        DocumentFlowStatus = "issued"
 	DocumentFlowStatusAccepted      DocumentFlowStatus = "accepted"
 	DocumentFlowStatusRejected      DocumentFlowStatus = "rejected"
 	DocumentFlowStatusOverdue       DocumentFlowStatus = "overdue"
@@ -82,10 +84,16 @@ func (f DocumentFlowStatus) IsTerminalFlow() bool {
 }
 
 // AllowedFlowTransitions returns the valid next flow states from the current one.
-// Only manual user transitions are listed here; cron transitions (overdue) are
-// applied directly by the worker without going through this guard.
 func (f DocumentFlowStatus) AllowedFlowTransitions() []DocumentFlowStatus {
 	switch f {
+	case DocumentFlowStatusIssued:
+		return []DocumentFlowStatus{
+			DocumentFlowStatusAccepted,
+			DocumentFlowStatusRejected,
+			DocumentFlowStatusPaid,
+			DocumentFlowStatusPartiallyPaid,
+			DocumentFlowStatusOverdue,
+		}
 	case DocumentFlowStatusAccepted:
 		return []DocumentFlowStatus{
 			DocumentFlowStatusPaid,
@@ -112,6 +120,7 @@ func (f DocumentFlowStatus) AllowedFlowTransitions() []DocumentFlowStatus {
 // from a published document that has no existing flow status yet (nil).
 func AllowedInitialFlowStatuses() []DocumentFlowStatus {
 	return []DocumentFlowStatus{
+		DocumentFlowStatusIssued,
 		DocumentFlowStatusAccepted,
 		DocumentFlowStatusRejected,
 		DocumentFlowStatusPaid,
@@ -120,8 +129,26 @@ func AllowedInitialFlowStatuses() []DocumentFlowStatus {
 }
 
 // =============================================================================
-// Document Entity
+// Document Entity & Payments
 // =============================================================================
+
+type DocumentPayment struct {
+	Id            string          `json:"id" gorm:"column:id;primaryKey"`
+	TenantId      string          `json:"tenant_id" gorm:"column:tenant_id;index"`
+	DocumentId    string          `json:"document_id" gorm:"column:document_id;index"`
+	Amount        decimal.Decimal `json:"amount" gorm:"column:amount;default:0"`
+	PaymentMethod string          `json:"payment_method" gorm:"column:payment_method"`
+	PaymentDate   time.Time       `json:"payment_date" gorm:"column:payment_date"`
+	ReferenceNo   string          `json:"reference_no" gorm:"column:reference_no"`
+	Notes         string          `json:"notes" gorm:"column:notes"`
+	CreatedBy     string          `json:"created_by" gorm:"column:created_by"`
+	CreatedAt     time.Time       `json:"created_at" gorm:"column:created_at"`
+	DeletedAt     sql.NullTime    `json:"deleted_at" gorm:"column:deleted_at"`
+}
+
+func (p DocumentPayment) TableName() string {
+	return "document_payments"
+}
 
 type Document struct {
 	Id             string  `json:"id" gorm:"column:id;primaryKey"`
@@ -175,6 +202,7 @@ type Document struct {
 	Children     []Document         `json:"children" gorm:"foreignKey:ParentId;references:Id"`
 	Items        []DocumentItem     `json:"items" gorm:"foreignKey:DocumentId;references:Id"`
 	Activities   []DocumentActivity `json:"activities" gorm:"foreignKey:DocumentId;references:Id"`
+	Payments     []DocumentPayment  `json:"payments" gorm:"foreignKey:DocumentId;references:Id"`
 	Creator      User               `json:"creator" gorm:"foreignKey:CreatedBy;references:Id"`
 }
 
@@ -193,29 +221,17 @@ func (d Document) OutstandingAmount() decimal.Decimal {
 }
 
 // IsDeletable returns true when the document can be soft-deleted.
-// Only drafts and terminally-closed documents may be removed.
 func (d Document) IsDeletable() bool {
-	if d.Status == DocumentStatusDraft {
-		return true
-	}
-	if d.Status == DocumentStatusCancelled {
-		return true
-	}
-	if d.FlowStatus != nil && d.FlowStatus.IsTerminalFlow() {
-		return true
-	}
-	return false
+	return d.Status == DocumentStatusDraft
 }
 
 // CanTransitionFlow returns whether transitioning to the given flow status is
 // valid given the document's current status and flow_status.
 func (d Document) CanTransitionFlow(next DocumentFlowStatus) bool {
-	// Flow transitions only apply to published documents.
 	if d.Status != DocumentStatusPublished {
 		return false
 	}
 
-	// No existing flow status: only the initial allowed set is valid.
 	if d.FlowStatus == nil {
 		for _, allowed := range AllowedInitialFlowStatuses() {
 			if next == allowed {
@@ -225,7 +241,6 @@ func (d Document) CanTransitionFlow(next DocumentFlowStatus) bool {
 		return false
 	}
 
-	// Terminal flow states cannot transition further.
 	if d.FlowStatus.IsTerminalFlow() {
 		return false
 	}

@@ -38,20 +38,20 @@ type ResetPasswordRequest struct {
 }
 
 type OnboardingRequest struct {
-	TenantName      string `json:"tenant_name" validate:"required,min=2,max=100"`
-	Email           string `json:"email" validate:"email"`
-	Phone           string `json:"phone" validate:"number"`
-	AddressLine1    string `json:"address_line_1"`
-	AddressLine2    string `json:"address_line_2"`
-	City            string `json:"city"`
-	State           string `json:"state"`
-	PostalCode      string `json:"postal_code"`
-	Country         string `json:"country"`
-	TaxId           string `json:"tax_number"`
-	Website         string `json:"website"`
-	Timezone        string `json:"timezone"`
-	LogoS3URL       string `json:"logo_s3_url"`
-	DefaultCurrency string `json:"default_currency"`
+	TenantName      string `json:"tenant_name" form:"tenant_name" validate:"required,min=2,max=100"`
+	Email           string `json:"email" form:"email" validate:"omitempty,email"`
+	Phone           string `json:"phone" form:"phone"`
+	AddressLine1    string `json:"address_line_1" form:"address_line_1"`
+	AddressLine2    string `json:"address_line_2" form:"address_line_2"`
+	City            string `json:"city" form:"city"`
+	State           string `json:"state" form:"state"`
+	PostalCode      string `json:"postal_code" form:"postal_code"`
+	Country         string `json:"country" form:"country"`
+	TaxId           string `json:"tax_number" form:"tax_number"`
+	Website         string `json:"website" form:"website"`
+	Timezone        string `json:"timezone" form:"timezone"`
+	LogoS3URL       string `json:"logo_s3_url" form:"logo_s3_url"`
+	DefaultCurrency string `json:"default_currency" form:"default_currency"`
 }
 
 type UserResponse struct {
